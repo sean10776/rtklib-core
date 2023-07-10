@@ -1429,6 +1429,86 @@ extern int outnmea_gsv(uint8_t *buff, const sol_t *sol, const ssat_t *ssat)
     }
     return (int)(p-(char *)buff);
 }
+/* output solution in the form of ntou tcp get message -------------------------*/
+extern int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, char *CPU, char *CS)
+{
+    gtime_t time;
+    double h,ep[6],pos[3],twd[3],dms1[3],dms2[3],dop=1.0;
+    int solq,refid=0;
+    char *p=(char *)buff,*q,sum;
+
+    trace(3,"outnmea_gga:\n");
+
+    if (sol->stat<=SOLQ_NONE) {
+        return (int)(p-(char *)buff);
+    }
+    for (solq=0;solq<8;solq++) if (nmea_solq[solq]==sol->stat) break;
+    if (solq>=8) solq=0;
+    time=gpst2utc(sol->time);
+    if (time.sec>=0.995) {time.time++; time.sec=0.0;}
+    time2epoch(time,ep);
+    ecef2pos(sol->rr,pos);
+    h=geoidh(pos);
+    deg2dms(fabs(pos[0])*R2D,dms1,7);
+    deg2dms(fabs(pos[1])*R2D,dms2,7);
+    pos2twd(pos, twd);
+    p+=sprintf(p, "%s", "GET /GpsDataWebService.asmx/InsertGpsSeriesNew?");
+    p+=sprintf(p, "%s", "dBName=GPS");
+    p+=sprintf(p, "%s%s", "&SiteName=", sitename);
+    p+=sprintf(p, "%s%d", "&SatNum=", sol->ns);
+    p+=sprintf(p, "%s%4d/%02d/%02d+%02d:%02d:%05.2f", "&DataTime=", (int)ep[0], (int)ep[1], (int)ep[2], (int)ep[3], (int)ep[4], ep[5]);
+    p+=sprintf(p, "%s%f", "&X=", twd[0]);
+    p+=sprintf(p, "%s%f", "&Y=", twd[1]);
+    p+=sprintf(p, "%s%f", "&Z=", twd[2]);
+    p+=sprintf(p, "%s%1d", "&RMS=", solq);
+    p+=sprintf(p, "%s%s", "&EV=", EV);
+    p+=sprintf(p, "%s%s", "&CPU=", CPU);
+    p+=sprintf(p, "%s%s", "&CS=", CS);
+    p+=sprintf(p, "%s", " HTTP/1.1\r\n");
+    p+=sprintf(p, "%s", "Host:");
+    p+=sprintf(p, "%s", "140.121.130.58");
+    p+=sprintf(p, "%s", "\r\nConnection: close \r\n\r\n");
+    return (int)(p-(char *)buff);
+}
+/* output solution in the old api version form of ntou tcp get message -------------------------*/
+extern int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sitename)
+{
+    gtime_t time;
+    double h,ep[6],pos[3],twd[3],dms1[3],dms2[3],dop=1.0;
+    int solq,refid=0;
+    char *p=(char *)buff,*q,sum;
+
+    trace(3,"outnmea_gga:\n");
+
+    if (sol->stat<=SOLQ_NONE) {
+        return (int)(p-(char *)buff);
+    }
+    for (solq=0;solq<8;solq++) if (nmea_solq[solq]==sol->stat) break;
+    if (solq>=8) solq=0;
+    time=gpst2utc(sol->time);
+    if (time.sec>=0.995) {time.time++; time.sec=0.0;}
+    time2epoch(time,ep);
+    ecef2pos(sol->rr,pos);
+    h=geoidh(pos);
+    deg2dms(fabs(pos[0])*R2D,dms1,7);
+    deg2dms(fabs(pos[1])*R2D,dms2,7);
+    pos2twd(pos, twd);
+    p+=sprintf(p, "%s", "GET /GpsData.ashx?");
+    p+=sprintf(p, "%s", "dBName=GPS");
+    p+=sprintf(p, "%s%s", "&SiteName=", sitename);
+    p+=sprintf(p, "%s%d", "&SatNum=", sol->ns);
+    p+=sprintf(p, "%s%4d/%02d/%02d", "&Day=", (int)ep[0], (int)ep[1], (int)ep[2]);
+    p+=sprintf(p, "%s%02d:%02d:%05.2f", "&Time=", (int)ep[3], (int)ep[4], ep[5]);
+    p+=sprintf(p, "%s%f", "&X=", twd[0]);
+    p+=sprintf(p, "%s%f", "&Y=", twd[1]);
+    p+=sprintf(p, "%s%f", "&Z=", twd[2]);
+    p+=sprintf(p, "%s%1d", "&RMS=", solq);
+    p+=sprintf(p, "%s", " HTTP/1.1\r\n");
+    p+=sprintf(p, "%s", "Host:");
+    p+=sprintf(p, "%s", hostname);
+    p+=sprintf(p, "%s", "\r\nConnection: close \r\n\r\n");
+    return (int)(p-(char *)buff);
+}
 /* output processing options ---------------------------------------------------
 * output processing options to buffer
 * args   : uint8_t *buff    IO  output buffer

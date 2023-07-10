@@ -445,6 +445,7 @@ extern "C" {
 #define STR_UDPSVR   10                 /* stream type: UDP server */
 #define STR_UDPCLI   11                 /* stream type: UDP server */
 #define STR_MEMBUF   12                 /* stream type: memory buffer */
+#define STR_HTTPREQ  13                 /* stream type: HTTP request */
 
 #define STRFMT_RTCM2 0                  /* stream format: RTCM 2 */
 #define STRFMT_RTCM3 1                  /* stream format: RTCM 3 */
@@ -460,12 +461,13 @@ extern "C" {
 #define STRFMT_RT17  11                 /* stream format: Trimble RT17 */
 #define STRFMT_SEPT  12                 /* stream format: Septentrio */
 #define STRFMT_TERSUS 13                /* stream format: TERSUS */
-#define STRFMT_RINEX 14                 /* stream format: RINEX */
-#define STRFMT_SP3   15                 /* stream format: SP3 */
-#define STRFMT_RNXCLK 16                /* stream format: RINEX CLK */
-#define STRFMT_SBAS  17                 /* stream format: SBAS messages */
-#define STRFMT_NMEA  18                 /* stream format: NMEA 0183 */
-#define MAXRCVFMT    13                 /* max number of receiver format */
+#define STRFMT_ANDROID 14               /* stream format: Android */ 
+#define STRFMT_RINEX 15                 /* stream format: RINEX */
+#define STRFMT_SP3   16                 /* stream format: SP3 */
+#define STRFMT_RNXCLK 17                /* stream format: RINEX CLK */
+#define STRFMT_SBAS  18                 /* stream format: SBAS messages */
+#define STRFMT_NMEA  19                 /* stream format: NMEA 0183 */
+#define MAXRCVFMT    14                 /* max number of receiver format */
 
 #define STR_MODE_R  0x1                 /* stream mode: read */
 #define STR_MODE_W  0x2                 /* stream mode: write */
@@ -1418,6 +1420,7 @@ EXPORT void ecef2pos(const double *r, double *pos);
 EXPORT void pos2ecef(const double *pos, double *r);
 EXPORT void ecef2enu(const double *pos, const double *r, double *e);
 EXPORT void enu2ecef(const double *pos, const double *e, double *r);
+EXPORT void pos2twd (const double *pos, double *twd);
 EXPORT void covenu  (const double *pos, const double *P, double *Q);
 EXPORT void covecef (const double *pos, const double *Q, double *P);
 EXPORT void xyz2enu (const double *pos, double *E);
@@ -1613,6 +1616,7 @@ EXPORT int input_bnx   (raw_t *raw, uint8_t data);
 EXPORT int input_rt17  (raw_t *raw, uint8_t data);
 EXPORT int input_sbf   (raw_t *raw, uint8_t data);
 EXPORT int input_tersus(raw_t *raw, uint8_t data);
+EXPORT int input_and   (raw_t *raw, uint8_t data);
 EXPORT int input_oem4f (raw_t *raw, FILE *fp);
 EXPORT int input_cnavf (raw_t *raw, FILE *fp);
 EXPORT int input_ubxf  (raw_t *raw, FILE *fp);
@@ -1625,6 +1629,7 @@ EXPORT int input_bnxf  (raw_t *raw, FILE *fp);
 EXPORT int input_rt17f (raw_t *raw, FILE *fp);
 EXPORT int input_sbff  (raw_t *raw, FILE *fp);
 EXPORT int input_tersusf(raw_t *raw, FILE *fp);
+EXPORT int input_andf   (raw_t *raw, FILE *fp);
 
 EXPORT int gen_ubx (const char *msg, uint8_t *buff);
 EXPORT int gen_stq (const char *msg, uint8_t *buff);
@@ -1673,6 +1678,8 @@ EXPORT int outnmea_gsa(uint8_t *buff, const sol_t *sol,
                        const ssat_t *ssat);
 EXPORT int outnmea_gsv(uint8_t *buff, const sol_t *sol,
                        const ssat_t *ssat);
+EXPORT int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, char *CPU, char *CS);
+EXPORT int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sitename);
 
 /* google earth kml converter ------------------------------------------------*/
 EXPORT int convkml(const char *infile, const char *outfile, gtime_t ts,
@@ -1732,6 +1739,7 @@ EXPORT void strsendcmd(stream_t *stream, const char *cmd);
 EXPORT void strsettimeout(stream_t *stream, int toinact, int tirecon);
 EXPORT void strsetdir(const char *dir);
 EXPORT void strsetproxy(const char *addr);
+EXPORT void httprequest(const char *addr, int port, char *imsg, char *omsg);
 
 /* integer ambiguity resolution ----------------------------------------------*/
 EXPORT int lambda(int n, int m, const double *a, const double *Q, double *F,

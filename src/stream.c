@@ -260,6 +260,14 @@ typedef struct {            /* memory buffer type */
     uint8_t *buf;           /* write buffer */
 } membuf_t;
 
+typedef struct {
+    int state;              /* state (0:close,1:requesting,2:complete,3:error) */
+    int port;               /* port number */
+    char host[1024];        /* http host */
+    char payload[65535];     /* http payload */
+    thread_t thread;        /* request thread */
+} httpreq_t;
+
 /* proto types for static functions ------------------------------------------*/
 
 static tcpsvr_t *opentcpsvr(const char *path, char *msg);
@@ -2577,6 +2585,111 @@ static int statexmembuf(membuf_t *membuf, char *msg)
     p+=sprintf(p,"  rp      = %d\n",membuf->rp);
     return state;
 }
+/* open http request ---------------------------------------------------------*/
+static httpreq_t *openhttpreq(const char *path, char *msg)
+{
+    char sport[256]="",saddr[256]="";
+    int port;
+
+    tracet(3,"openhttpreq: path=%s\n",path);
+
+    httpreq_t *httpreq=(httpreq_t *)malloc(sizeof(httpreq_t));
+
+    decodetcppath(path,saddr,sport,NULL,NULL,NULL,NULL);
+    if (sscanf(sport,"%d",&port)<1) {
+        sprintf(msg,"port error: %s",sport);
+        tracet(2,"openhttpreq: port error port=%s\n",sport);
+        return NULL;
+    }
+    strcpy(httpreq->host,saddr);
+    httpreq->port=port;
+    return httpreq;
+}
+/* close http request --------------------------------------------------------*/
+static void closehttpreq(httpreq_t *httpreq)
+{
+    tracet(3,"closehttpreq:\n");
+    free(httpreq);
+}
+/* http request thread -------------------------------------------------------*/
+#ifdef WIN32
+static DWORD WINAPI httpreqthread(void *arg)
+#else
+static void *httpreqthread(void *arg)
+#endif
+{
+    httpreq_t *httpreq=(httpreq_t *)arg;
+    struct  sockaddr_in server_addr;
+    char buffer[65536]={0};
+    strncpy(buffer, httpreq->payload, strlen(httpreq->payload));
+
+    tracet(3,"httpreqthread: start\n");
+
+    SOCKET socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(socket_fd < 0){
+        httpreq->state=-1;
+        tracet(2, "socket error\n");
+        return 0;
+    }
+
+    // 設置遠程服務器地址
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(httpreq->port);
+
+    struct hostent *hp;
+    if ((hp = gethostbyname(httpreq->host)) == NULL) {
+        httpreq->state=-1;
+        tracet(2, "Unknown host %s\n", httpreq->host);
+        closesocket(socket_fd);
+        return 0;
+    }
+    memcpy(&server_addr.sin_addr,hp->h_addr,hp->h_length);
+
+    if(send(socket_fd, buffer, strlen(buffer), 0) < 0){
+        httpreq->state=-1;
+        tracet(2, "send error\n");
+        closesocket(socket_fd);
+        return 0;
+    }
+
+    // 接收和處理HTTP響應
+    while (1) {
+        memset(buffer, 0, 65536);
+        int bytes_received = recv(socket_fd, buffer, 65536 - 1, 0);
+        if (bytes_received <= 0) {
+            break;
+        }
+        printf("%s", buffer);
+    }
+    
+    // 關閉Socket
+    closesocket(socket_fd);
+
+    return 0;
+}
+/* write http request --------------------------------------------------------*/
+static int writehttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
+{
+    tracet(3,"writehttpreq: n=%d\n",n);
+
+    //copy http payload from input buffer
+    strncpy(httpreq->payload, buff, n);
+    httpreq->payload[n] = '\0';
+
+    if(httpreq->state<=0){
+        httpreq->state=1;
+#ifdef WIN32
+        if(!CreateThread(NULL,0,httpreqthread,httpreq,0,NULL)){
+            
+#else
+        if(pthread_create(&httpreq->thread,NULL,httpreqthread,httpreq))
+#endif
+            return 0;
+        }
+    }
+    return 0;
+}
 /* initialize stream environment -----------------------------------------------
 * initialize stream environment
 * args   : none
@@ -2747,6 +2860,7 @@ extern int stropen(stream_t *stream, int type, int mode, const char *path)
         case STR_MEMBUF  : stream->port=openmembuf(path,     stream->msg); break;
         case STR_FTP     : stream->port=openftp   (path,0,   stream->msg); break;
         case STR_HTTP    : stream->port=openftp   (path,1,   stream->msg); break;
+        case STR_HTTPREQ : stream->port=openhttpreq(path,    stream->msg); break;
         default: stream->state=0; return 1;
     }
     stream->state=!stream->port?-1:1;
@@ -2777,6 +2891,7 @@ extern void strclose(stream_t *stream)
             case STR_MEMBUF  : closemembuf((membuf_t *)stream->port); break;
             case STR_FTP     : closeftp   ((ftp_t    *)stream->port); break;
             case STR_HTTP    : closeftp   ((ftp_t    *)stream->port); break;
+            case STR_HTTPREQ : closehttpreq((httpreq_t *)stream->port); break;
         }
     }
     else {
@@ -2895,6 +3010,7 @@ extern int strwrite(stream_t *stream, uint8_t *buff, int n)
         case STR_NTRIPCAS: ns=writentripc((ntripc_t *)stream->port,buff,n,msg); break;
         case STR_UDPCLI  : ns=writeudpcli((udp_t    *)stream->port,buff,n,msg); break;
         case STR_MEMBUF  : ns=writemembuf((membuf_t *)stream->port,buff,n,msg); break;
+        case STR_HTTPREQ : ns=writehttpreq((httpreq_t *)stream->port,buff,n,msg); break;
         case STR_FTP     :
         case STR_HTTP    :
         default:
@@ -3209,3 +3325,9 @@ extern void strsendcmd(stream_t *str, const char *cmd)
         if (*q=='\0') break; else p=q+1;
     }
 }
+/* send http request -------------------------------------------------------
+* send http request
+* args   : stream_t *stream I   stream
+*          char   *cmd      I   receiver command strings
+* return : none
+*-----------------------------------------------------------------------------*/

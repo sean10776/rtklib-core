@@ -1425,6 +1425,7 @@ extern int input_raw(raw_t *raw, int format, uint8_t data)
         case STRFMT_BINEX: return input_bnx  (raw,data);
         case STRFMT_RT17 : return input_rt17 (raw,data);
         case STRFMT_SEPT : return input_sbf  (raw,data);
+        case STRFMT_ANDROID: return input_and(raw,data);
         /*case STRFMT_TERSUS: return input_tersus(raw,data);*/
     }
     return 0;
@@ -1452,6 +1453,7 @@ extern int input_rawf(raw_t *raw, int format, FILE *fp)
         case STRFMT_BINEX: return input_bnxf  (raw,fp);
         case STRFMT_RT17 : return input_rt17f (raw,fp);
         case STRFMT_SEPT : return input_sbff  (raw,fp);
+        case STRFMT_ANDROID: return input_andf(raw,fp);
         /*case STRFMT_TERSUS: return input_tersusf(raw,fp); */
     }
     return -2;

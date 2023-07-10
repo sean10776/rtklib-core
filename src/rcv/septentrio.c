@@ -53,6 +53,7 @@
 #define SBF_BDSRAW      4047    /* SBF BDS navigation page */
 #define SBF_QZSRAWL1CA  4066    /* SBF QZSS C/A subframe */
 #define SBF_NAVICRAW    4093    /* SBF NavIC/IRNSS subframe */
+#define SBF_PVTCARTESIAN 4006   /* SBF PVT Cartersian */
 
 /* get fields (little-endian) ------------------------------------------------*/
 #define U1(p) (*((uint8_t *)(p)))
@@ -60,6 +61,8 @@
 static uint16_t U2(uint8_t *p) {uint16_t a; memcpy(&a,p,2); return a;}
 static uint32_t U4(uint8_t *p) {uint32_t a; memcpy(&a,p,4); return a;}
 static int32_t  I4(uint8_t *p) {int32_t  a; memcpy(&a,p,4); return a;}
+static float    F4(uint8_t *p) {float    a; memcpy(&a,p,4); return a;}
+static double   F8(uint8_t *p) {double   a; memcpy(&a,p,8); return a;}
 
 /* svid to satellite number ([1] 4.1.9) --------------------------------------*/
 static int svid2sat(int svid)
@@ -782,6 +785,42 @@ static int decode_navicraw(raw_t *raw)
     }
     return 0;
 }
+/* decode SBF PVT cartesian log -----------------------------------------------*/
+static int decode_pvtcartesian(raw_t *raw)
+{    
+    uint8_t *p=raw->buff+14,buff[40];
+
+    uint8_t mode, error;
+
+    double x, y, z;
+
+    if (raw->len<95) {
+        trace(2,"sbf pvtcartesian length error: len=%d\n",raw->len);
+        return -1;
+    }
+
+    mode = U1(p);
+    error = U1(p+1);
+    x = F8(p+2);
+    y = F8(p+10);
+    z = F8(p+18);
+
+    if (mode != 3) {
+        trace(2,"sbf pvtcartesian mode error: mode=%d\n",mode);
+        return -1;
+    }
+
+    if (error != 0) {
+        trace(2,"sbf pvtcartesian error: error=%d\n",error);
+        return -1;
+    }
+
+    raw->sta.pos[0] = x;
+    raw->sta.pos[1] = y;
+    raw->sta.pos[2] = z;
+
+    return 5;
+}
 /* decode SBF block ----------------------------------------------------------*/
 static int decode_sbf(raw_t *raw)
 {
@@ -821,6 +860,7 @@ static int decode_sbf(raw_t *raw)
         case SBF_BDSRAW    : return decode_bdsraw    (raw);
         case SBF_QZSRAWL1CA: return decode_qzsrawl1ca(raw);
         case SBF_NAVICRAW  : return decode_navicraw  (raw);
+        case SBF_PVTCARTESIAN : return decode_pvtcartesian(raw);
     }
     trace(3,"sbf unsupported message: type=%d\n",type);
     return 0;

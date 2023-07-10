@@ -2015,6 +2015,68 @@ extern void enu2ecef(const double *pos, const double *e, double *r)
     xyz2enu(pos,E);
     matmul("TN",3,1,3,1.0,E,e,0.0,r);
 }
+/* transform geodetic to twd97 position -----------------------------------------
+* transform geodetic position to twd97 position
+* args   : double *pos      I   geodetic position {lat,lon,h} (rad,m)
+*          double *twd      O   twd97 position {e,n,h} (m)
+* return : none
+* notes  : WGS84, ellipsoidal height
+*-----------------------------------------------------------------------------*/
+extern void pos2twd(const double *pos, double *twd)
+{
+    double t, Ita2, N, m0, l, a0, a2, a4, a6, a8, s;
+	double Temp1, Temp2, Temp3, Temp4, Temp5, Temp6, Temp7, Temp8;
+	double PAI = 3.1415926535898;
+	double a = 6378137.0;
+	double f_c = 1.0 / 298.257222101;
+	double n = f_c / (2.0 - f_c);
+	a0 = 1.0 + n*n / 4.0 + n*n*n*n / 64.0;
+	a2 = 3.0*(n - n*n*n / 8.0) / 2.0;
+	a4 = 15.0*(n*n - n*n*n*n / 4.0) / 16.0;
+	a6 = 35.0*n*n*n / 48.0;
+	a8 = 315.0*n*n*n*n / 512.0;
+
+    double lat = pos[0]*R2D, lon = pos[1]*R2D;
+
+	double e2 = 2.0*f_c - f_c*f_c;
+	double e12 = e2 / (1.0 - e2);
+	double p2 = 3600.0 * R2D;
+	/*54座標系常數*/
+	double C0 = 6367558.49686;
+	double C1 = 32005.79642;
+	double C2 = 133.86115;
+	double C3 = 0.7031;
+	double temp1, temp2, temp3, temp4;
+	/*高斯變換*/
+	l = (lon - 121) * 3600;
+	t = tan(lat*D2R);
+	temp1 = t * t;
+	Ita2 = e12*cos(lat*D2R)*cos(lat*D2R);
+	temp2 = Ita2* Ita2;
+	N = a / sqrt(1 - e2 * sin(lat* D2R)* sin(lat*D2R));
+	m0 = l* cos(lat*D2R) / p2;
+	temp3 = m0*m0;
+	temp4 = temp3* temp3;
+	Temp1 = N*m0;
+	Temp2 = C0*lat*D2R;
+	Temp5 = sin(lat*D2R)* sin(lat*D2R);
+
+	Temp3 = cos(lat*D2R)* sin(lat*D2R)*(C1 + C2*Temp5 + C3*Temp5*
+		Temp5);
+	Temp4 = 1.0 / 2.0*N*t*temp3;
+	Temp5 = 1 / 24.0*(5.0 - (temp1* temp1) + 9.0* Ita2 + 4.0*(temp2* temp2))*N*t* temp4;
+	Temp6 = 1 / 720 * (61.0 - 58.0* temp1 + (temp1* temp1)) *N*t*(temp3* temp4);
+	Temp7 = 1 / 6.0*(1.0 - temp1 + Ita2)* N*(m0*temp3);
+	Temp8 = 1 / 120.0*(5.0 - 18.0* temp1 + (temp1* temp1) + 14.0* temp2 - 58.0* Ita2* temp1)*N*(m0*
+		temp4);
+
+
+	s = a*(a0*lat*D2R - a2*sin(2.0*lat*D2R) + a4*sin(4.0*lat*D2R)
+		- a6*sin(6.0*lat*D2R) + a8*sin(8.0*lat*D2R)) / (1.0 + n);
+	twd[0] = 250000 + (Temp1 + Temp7 + Temp8)*0.9999;
+	twd[1] = (s + Temp4 + Temp5 + Temp6)*0.9999;
+    twd[2] = pos[2];
+}
 /* transform covariance to local tangental coordinate --------------------------
 * transform ecef covariance to local tangental coordinate
 * args   : double *pos      I   geodetic position {lat,lon} (rad)
