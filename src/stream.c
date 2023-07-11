@@ -2637,7 +2637,7 @@ static void *httpreqthread(void *arg)
 
     tracet(3,"httpreqthread: start\n");
 
-    SOCKET socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    socket_t socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if((socket_fd) < 0){
         tracet(2, "socket error\n");
         goto socket_error;
