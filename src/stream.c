@@ -264,8 +264,11 @@ typedef struct {
     int state;              /* state (0:close,1:requesting,2:complete,3:error) */
     int port;               /* port number */
     char host[1024];        /* http host */
-    char payload[65535];     /* http payload */
+    char payload[65535];    /* http payload */
+    char response[65535];   /* http response */
+    char *p, *q;            /* response pointer */
     thread_t thread;        /* request thread */
+    lock_t lock;            /* lock flag */
 } httpreq_t;
 
 /* proto types for static functions ------------------------------------------*/
@@ -2593,7 +2596,8 @@ static httpreq_t *openhttpreq(const char *path, char *msg)
 
     tracet(3,"openhttpreq: path=%s\n",path);
 
-    httpreq_t *httpreq=(httpreq_t *)malloc(sizeof(httpreq_t));
+    httpreq_t *httpreq;
+    if(!(httpreq=(httpreq_t *)malloc(sizeof(httpreq_t)))) return NULL;
 
     decodetcppath(path,saddr,sport,NULL,NULL,NULL,NULL);
     if (sscanf(sport,"%d",&port)<1) {
@@ -2603,12 +2607,19 @@ static httpreq_t *openhttpreq(const char *path, char *msg)
     }
     strcpy(httpreq->host,saddr);
     httpreq->port=port;
+    initlock(&httpreq->lock);
     return httpreq;
 }
 /* close http request --------------------------------------------------------*/
 static void closehttpreq(httpreq_t *httpreq)
 {
     tracet(3,"closehttpreq:\n");
+#ifdef WIN32
+    if(httpreq->thread) WaitForSingleObject(httpreq->thread,INFINITE);
+    CloseHandle(httpreq->thread);
+#else
+    if(httpreq->thread) pthread_join(httpreq->thread,NULL);
+#endif
     free(httpreq);
 }
 /* http request thread -------------------------------------------------------*/
@@ -2619,6 +2630,7 @@ static void *httpreqthread(void *arg)
 #endif
 {
     httpreq_t *httpreq=(httpreq_t *)arg;
+    lock(&httpreq->lock);
     struct  sockaddr_in server_addr;
     char buffer[65536]={0};
     strncpy(buffer, httpreq->payload, strlen(httpreq->payload));
@@ -2626,10 +2638,9 @@ static void *httpreqthread(void *arg)
     tracet(3,"httpreqthread: start\n");
 
     SOCKET socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if(socket_fd < 0){
-        httpreq->state=-1;
+    if((socket_fd) < 0){
         tracet(2, "socket error\n");
-        return 0;
+        goto socket_error;
     }
 
     // 設置遠程服務器地址
@@ -2639,56 +2650,95 @@ static void *httpreqthread(void *arg)
 
     struct hostent *hp;
     if ((hp = gethostbyname(httpreq->host)) == NULL) {
-        httpreq->state=-1;
         tracet(2, "Unknown host %s\n", httpreq->host);
-        closesocket(socket_fd);
-        return 0;
+        goto socket_error;
     }
     memcpy(&server_addr.sin_addr,hp->h_addr,hp->h_length);
 
+    // 連接遠程服務器
+    if(connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0){
+        tracet(2, "connect error\n");
+        goto socket_error;
+    }
+
     if(send(socket_fd, buffer, strlen(buffer), 0) < 0){
-        httpreq->state=-1;
         tracet(2, "send error\n");
-        closesocket(socket_fd);
-        return 0;
+        goto socket_error;
     }
 
     // 接收和處理HTTP響應
+    char *p = httpreq->response;
+    httpreq->p = p;
     while (1) {
         memset(buffer, 0, 65536);
         int bytes_received = recv(socket_fd, buffer, 65536 - 1, 0);
-        if (bytes_received <= 0) {
-            break;
-        }
-        printf("%s", buffer);
+        if (bytes_received <= 0) break;
+        p += sprintf(p, "%s", buffer);
     }
+    p += sprintf(p, "\0");
+    httpreq->q = p;
     
     // 關閉Socket
     closesocket(socket_fd);
-
+    httpreq->state=2;
+    unlock(&httpreq->lock);
     return 0;
+
+socket_error:
+    httpreq->state=-1;
+    closesocket(socket_fd);
+    unlock(&httpreq->lock);
+    return -1;
 }
 /* write http request --------------------------------------------------------*/
 static int writehttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
 {
     tracet(3,"writehttpreq: n=%d\n",n);
 
-    //copy http payload from input buffer
-    strncpy(httpreq->payload, buff, n);
-    httpreq->payload[n] = '\0';
-
-    if(httpreq->state<=0){
+    if(httpreq->state<=0 || httpreq->state==2){
+        //copy http payload from input buffer
+        strncpy(httpreq->payload, buff, n);
+        httpreq->payload[n] = '\0';
         httpreq->state=1;
 #ifdef WIN32
-        if(!CreateThread(NULL,0,httpreqthread,httpreq,0,NULL)){
-            
+        if(!(httpreq->thread=CreateThread(NULL,0,httpreqthread,httpreq,0,NULL))) {
 #else
-        if(pthread_create(&httpreq->thread,NULL,httpreqthread,httpreq))
+        if(pthread_create(&httpreq->thread,NULL,httpreqthread,httpreq)) {
 #endif
             return 0;
         }
     }
     return 0;
+}
+/* read http request ---------------------------------------------------------*/
+static int readhttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
+{
+    tracet(3,"readhttpreq: n=%d\n",n);
+    if (httpreq->state<=1) return 0;
+    char *p = httpreq->p, *q = httpreq->q;
+    int len = q - p > n ? n : q - p;
+    strncpy(buff, httpreq->response, len);
+    httpreq->p += len;
+    if(httpreq->p >= httpreq->q) httpreq->state=0;
+    return len;
+}
+/* get state http request ----------------------------------------------------*/
+static int statehttpreq(httpreq_t *httpreq)
+{
+    return !httpreq?0:httpreq->state;
+}
+/* get extended state http request -------------------------------------------*/
+static int statexhttpreq(httpreq_t *httpreq, char *msg)
+{
+    char *p=msg;
+    int state=!httpreq?0:httpreq->state;
+
+    p+=sprintf(p,"httpreq:\n");
+    p+=sprintf(p,"  state   = %d\n",state);
+    if (!state) return 0;
+    p+=sprintf(p,"  host    = %s\n",httpreq->host);
+    p+=sprintf(p,"  port    = %d\n",httpreq->port);
+    return state;
 }
 /* initialize stream environment -----------------------------------------------
 * initialize stream environment
@@ -2962,6 +3012,7 @@ extern int strread(stream_t *stream, uint8_t *buff, int n)
         case STR_MEMBUF  : nr=readmembuf((membuf_t *)stream->port,buff,n,msg); break;
         case STR_FTP     : nr=readftp   ((ftp_t    *)stream->port,buff,n,msg); break;
         case STR_HTTP    : nr=readftp   ((ftp_t    *)stream->port,buff,n,msg); break;
+        case STR_HTTPREQ : nr=readhttpreq((httpreq_t *)stream->port,buff,n,msg); break;
         default:
             strunlock(stream);
             return 0;
@@ -3064,6 +3115,7 @@ extern int strstat(stream_t *stream, char *msg)
         case STR_MEMBUF  : state=statemembuf((membuf_t *)stream->port); break;
         case STR_FTP     : state=stateftp   ((ftp_t    *)stream->port); break;
         case STR_HTTP    : state=stateftp   ((ftp_t    *)stream->port); break;
+        case STR_HTTPREQ : state=statehttpreq((httpreq_t *)stream->port); break;
         default:
             strunlock(stream);
             return 0;
@@ -3103,6 +3155,7 @@ extern int strstatx(stream_t *stream, char *msg)
         case STR_MEMBUF  : state=statexmembuf((membuf_t *)stream->port,msg); break;
         case STR_FTP     : state=statexftp   ((ftp_t    *)stream->port,msg); break;
         case STR_HTTP    : state=statexftp   ((ftp_t    *)stream->port,msg); break;
+        case STR_HTTPREQ : state=statexhttpreq((httpreq_t *)stream->port,msg); break;
         default:
             msg[0]='\0';
             strunlock(stream);

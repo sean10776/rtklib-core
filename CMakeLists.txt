@@ -18,12 +18,17 @@ set(FILES_TO_REMOVE
 list(REMOVE_ITEM RTKLIB_SRC_RCV ${FILES_TO_REMOVE})
 
 if(WIN32)
-    add_compile_definitions(-DWIN32)
+    add_compile_definitions(WIN32)
+    if(MSVC)
+        add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
+    endif()
 endif()
 
 if(BUILD_TESTS)
-    add_compile_options(-g)
-    add_compile_definitions(-DNFREQ=3 -DNEXOBS=3 -DENAGLO -DENAGAL -DENACMP -DTRACE)
+    if(CYGWIN)
+        add_compile_options(-g)
+    endif()
+    add_compile_definitions(NFREQ=3 NEXOBS=3 ENAGLO ENAGAL ENACMP TRACE)
 endif()
 
 add_library(${PROJECT_NAME} STATIC ${RTKLIB_SRC} ${RTKLIB_SRC_RCV})

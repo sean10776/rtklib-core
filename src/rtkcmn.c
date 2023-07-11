@@ -2041,13 +2041,13 @@ extern void pos2twd(const double *pos, double *twd)
 	double e2 = 2.0*f_c - f_c*f_c;
 	double e12 = e2 / (1.0 - e2);
 	double p2 = 3600.0 * R2D;
-	/*54座標系常數*/
+    /*54座標系常數*/
 	double C0 = 6367558.49686;
 	double C1 = 32005.79642;
 	double C2 = 133.86115;
 	double C3 = 0.7031;
 	double temp1, temp2, temp3, temp4;
-	/*高斯變換*/
+    /*高斯變換*/
 	l = (lon - 121) * 3600;
 	t = tan(lat*D2R);
 	temp1 = t * t;
