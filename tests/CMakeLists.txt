@@ -14,7 +14,7 @@ foreach(test_source ${TESTS_FILES})
 
     add_executable(${test_name} ${test_source})
 
-    target_link_libraries(${test_name} rtklib_core)
+    target_link_libraries(${test_name} rtklib-core)
 
     message(STATUS "Adding test ${test_name}")
 endforeach(test_source ${LIBCHECKMAC_TESTS})

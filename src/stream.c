@@ -2682,13 +2682,13 @@ static void *httpreqthread(void *arg)
     closesocket(socket_fd);
     httpreq->state=2;
     unlock(&httpreq->lock);
-    return 0;
+    return 1;
 
 socket_error:
     httpreq->state=-1;
     closesocket(socket_fd);
     unlock(&httpreq->lock);
-    return -1;
+    return 0;
 }
 /* write http request --------------------------------------------------------*/
 static int writehttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)

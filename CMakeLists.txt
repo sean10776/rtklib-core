@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(rtklib_core LANGUAGES C)
+project(rtklib-core LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(RTKLIB_VERSION b34g)
