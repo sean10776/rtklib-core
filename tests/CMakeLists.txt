@@ -17,4 +17,4 @@ foreach(test_source ${TESTS_FILES})
     target_link_libraries(${test_name} rtklib-core)
 
     message(STATUS "Adding test ${test_name}")
-endforeach(test_source ${LIBCHECKMAC_TESTS})
+endforeach()
