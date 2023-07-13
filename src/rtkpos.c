@@ -321,7 +321,7 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
 {
     ssat_t *ssat;
     double tow;
-    char buff[MAXSOLMSG+1],id[32];
+    char buff[MAXSOLMSG+1],id[32],rid[32];
     int i,j,k,n,week,nfreq,nf=NF(&rtk->opt);
     
     if (statlevel<=0||!fp_stat||!rtk->sol.stat) return;
@@ -346,11 +346,12 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
         ssat=rtk->ssat+i;
         if (!ssat->vs) continue;
         satno2id(i+1,id);
+        satno2id(ssat->refsat+1,rid);
         for (j=0;j<nfreq;j++) {
             k=IB(i+1,j,&rtk->opt);
-            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%d,%.0f,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
-                    week,tow,id,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,
-                    ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->snr_rover[j]*SNR_UNIT,
+            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%s,%d,%.1f,%.1f,%.4f,%.4f,%d,%.0f,%.0f,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
+                    week,tow,id,rid,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,
+                    ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->snr_rover[j]*SNR_UNIT,ssat->snr_base[j]*SNR_UNIT,
                     ssat->fix[j],ssat->slip[j]&3,ssat->lock[j],ssat->outc[j],
                     ssat->slipc[j],ssat->rejc[j],rtk->x[k],
                     rtk->P[k+k*rtk->nx],ssat->icbias[j]);
@@ -1238,6 +1239,7 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                 if (freqi<=0.0||freqj<=0.0) continue;
                 if (!test_sys(sysj,m)) continue;
                 if (!validobs(iu[j],ir[j],f,nf,y)) continue;
+                rtk->ssat[sat[j]-1].refsat=sat[i]-1;
             
                 if (H) {
                     Hi=H+nv*rtk->nx;
