@@ -1144,6 +1144,8 @@ typedef struct {        /* satellite status type */
     double phw;         /* phase windup (cycle) */
     gtime_t pt[2][NFREQ]; /* previous carrier-phase time */
     double  ph[2][NFREQ]; /* previous carrier-phase observable (cycle) */
+    double  sdrp[NFREQ];  /* single differential of pseudorange (m) */
+    double  sdrc[NFREQ];  /* single differential of carrier-phase meas (cycle) */
 } ssat_t;
 
 typedef struct {        /* ambiguity control type */
@@ -1172,6 +1174,7 @@ typedef struct {        /* RTK control/result type */
     char errbuf[MAXERRMSG]; /* error message buffer */
     prcopt_t opt;       /* processing options */
     int initial_mode;   /* initial positioning mode */
+    double sdave[6];    /* single differential average 0:G,1:R,2:E,3:C,4:Q,5:I*/
 } rtk_t;
 
 typedef struct {        /* receiver raw data control type */

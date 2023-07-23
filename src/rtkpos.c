@@ -349,8 +349,8 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
         satno2id(ssat->refsat+1,rid);
         for (j=0;j<nfreq;j++) {
             k=IB(i+1,j,&rtk->opt);
-            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%s,%d,%.1f,%.1f,%.4f,%.4f,%d,%.0f,%.0f,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
-                    week,tow,id,rid,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,
+            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%s,%d,%.1f,%.1f,%.4f,%.4f,%.4f,%.4f,%d,%.0f,%.0f,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
+                    week,tow,id,rid,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,ssat->sdrp[j],ssat->sdrc[j],
                     ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->snr_rover[j]*SNR_UNIT,ssat->snr_base[j]*SNR_UNIT,
                     ssat->fix[j],ssat->slip[j]&3,ssat->lock[j],ssat->outc[j],
                     ssat->slipc[j],ssat->rejc[j],rtk->x[k],
@@ -1872,6 +1872,39 @@ static int valpos(rtk_t *rtk, const double *v, const double *R, const int *vflg,
     }
     return stat;
 }
+/* single differential -----------------------------------------------------------*/
+static void sdres(rtk_t *rtk,int ns,const int *sat,const double *y,const int *iu,const int*ir)
+{
+    prcopt_t *opt=&rtk->opt;
+    int m,i,j,f;
+    int code,frq,sysi=0,na,nf=NF(opt);
+    double bias=0, res;
+
+    trace(3,"sdres   : ns=%d\n",ns);
+    /* zero out residual phase and code biases for all satellites */
+    for (i=0;i<MAXSAT;i++) for (j=0;j<NFREQ;j++) {
+        rtk->ssat[i].sdrc[j]=rtk->ssat[i].sdrp[j]=0.0;
+    }
+
+    for(m=0;m<6;m++){
+        bias = rtk->sdave[m] = 0;
+        na = 0;
+        for(i=0;i<ns;i++) for(f=opt->mode>=PMODE_DGPS?0:nf;f<nf*2;f++){
+            frq = f%nf; code=f<nf?0:1;
+            sysi=rtk->ssat[sat[i]-1].sys;
+            if(!test_sys(sysi, m)) continue;
+            if (!validobs(iu[i],ir[i],f,nf,y)) continue;
+            res = y[f+iu[i]*nf*2]-y[f+ir[i]*nf*2];
+            if(!code) rtk->ssat[sat[i]-1].sdrc[frq]=res;
+            else{
+                rtk->ssat[sat[i]-1].sdrp[frq]=res;
+                if (bias != 0.0) bias=res;
+                rtk->sdave[m] += res; na++;
+            }
+        }
+        if (na > 0) rtk->sdave[m] = rtk->sdave[m]/na - bias;
+    }
+}
 /* relpos()relative positioning ------------------------------------------------------
  *  args:  rtk      IO      gps solution structure
            obs      I       satellite observations
@@ -1908,8 +1941,8 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
         rtk->ssat[i].sys=satsys(i+1,NULL); /* gnss system */
         for (j=0;j<NFREQ;j++) {
             rtk->ssat[i].vsat[j]=0;                                               /* valid satellite */
-                rtk->ssat[i].snr_rover[j]=0;
-                rtk->ssat[i].snr_base[j] =0;
+            rtk->ssat[i].snr_rover[j]=0;
+            rtk->ssat[i].snr_base[j] =0;
         }
     }
     /* compute satellite positions, velocities and clocks */
@@ -2123,6 +2156,9 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
         if (rtk->ssat[i].lock[j]<0||(rtk->nfix>0&&rtk->ssat[i].fix[j]>=2))
             rtk->ssat[i].lock[j]++;
     }
+    /* save single differential  */
+    sdres(rtk,ns,sat,y,iu,ir);
+
     free(rs); free(dts); free(var); free(y); free(e); free(azel); free(freq);
     free(xp); free(Pp);  free(xa);  free(v); free(H); free(R); free(bias);
     
@@ -2166,6 +2202,7 @@ extern void rtkinit(rtk_t *rtk, const prcopt_t *opt)
     rtk->opt=*opt;
     rtk->initial_mode=rtk->opt.mode;
     rtk->sol.thres=(float)opt->thresar[0];
+    for (i=0;i<6;i++) rtk->sdave[i]=0.0;
 }
 /* free rtk control ------------------------------------------------------------
 * free memory for rtk control struct
