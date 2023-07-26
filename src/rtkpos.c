@@ -1873,11 +1873,11 @@ static int valpos(rtk_t *rtk, const double *v, const double *R, const int *vflg,
     return stat;
 }
 /* single differential -----------------------------------------------------------*/
-static void sdres(rtk_t *rtk,int ns,const int *sat,const double *y,const int *iu,const int*ir)
+static void sdres(rtk_t *rtk,int ns,const int *sat,double *y,const int *iu,const int*ir)
 {
     prcopt_t *opt=&rtk->opt;
     int m,i,j,f;
-    int code,frq,sysi=0,na,nf=NF(opt);
+    int code,frq,sys=0,na,nf=NF(opt);
     double bias=0, res;
 
     trace(3,"sdres   : ns=%d\n",ns);
@@ -1886,23 +1886,22 @@ static void sdres(rtk_t *rtk,int ns,const int *sat,const double *y,const int *iu
         rtk->ssat[i].sdrc[j]=rtk->ssat[i].sdrp[j]=0.0;
     }
 
-    for(m=0;m<6;m++){
-        bias = rtk->sdave[m] = 0;
-        na = 0;
-        for(i=0;i<ns;i++) for(f=opt->mode>=PMODE_DGPS?0:nf;f<nf*2;f++){
-            frq = f%nf; code=f<nf?0:1;
-            sysi=rtk->ssat[sat[i]-1].sys;
-            if(!test_sys(sysi, m)) continue;
-            if (!validobs(iu[i],ir[i],f,nf,y)) continue;
+    for(m=0;m<6;m++) for(f=opt->mode>=PMODE_DGPS?0:nf;f<nf*2;f++) {
+        frq = f%nf; code=f<nf?0:1;
+        bias = rtk->sdave[m][frq] = 0.0;
+        for(i=na=0;i<ns;i++){
+            sys=rtk->ssat[sat[i]-1].sys;
+            if(!test_sys(sys, m)) continue;
+            if(!validobs(iu[i],ir[i],f,nf,y)) continue;
             res = y[f+iu[i]*nf*2]-y[f+ir[i]*nf*2];
             if(!code) rtk->ssat[sat[i]-1].sdrc[frq]=res;
             else{
                 rtk->ssat[sat[i]-1].sdrp[frq]=res;
-                if (bias != 0.0) bias=res;
-                rtk->sdave[m] += res; na++;
+                if (bias == 0.0) bias=res;
+                rtk->sdave[m][frq] += res; na++;
             }
         }
-        if (na > 0) rtk->sdave[m] = rtk->sdave[m]/na - bias;
+        if (na > 0) rtk->sdave[m][frq] = rtk->sdave[m][frq]/na - bias;
     }
 }
 /* relpos()relative positioning ------------------------------------------------------
@@ -2177,7 +2176,7 @@ extern void rtkinit(rtk_t *rtk, const prcopt_t *opt)
     sol_t sol0={{0}};
     ambc_t ambc0={{{0}}};
     ssat_t ssat0={0};
-    int i;
+    int i,j;
     
     trace(3,"rtkinit :\n");
     
@@ -2202,7 +2201,7 @@ extern void rtkinit(rtk_t *rtk, const prcopt_t *opt)
     rtk->opt=*opt;
     rtk->initial_mode=rtk->opt.mode;
     rtk->sol.thres=(float)opt->thresar[0];
-    for (i=0;i<6;i++) rtk->sdave[i]=0.0;
+    for (i=0;i<6;i++) for(j=0;j<NFREQ;j++) rtk->sdave[i][j]=0.0;
 }
 /* free rtk control ------------------------------------------------------------
 * free memory for rtk control struct
