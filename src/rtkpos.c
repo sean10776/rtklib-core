@@ -1228,6 +1228,7 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                 if (i<0||azel[1+iu[j]*2]>=azel[1+iu[i]*2]) i=j;
             }
             if (i<0) continue;
+            rtk->ssat[sat[i]-1].refsat=sat[i]-1;
         
             /* calculate double differences of residuals (code/phase) for each sat */
             for (j=0;j<ns;j++) {
