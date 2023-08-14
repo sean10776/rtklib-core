@@ -782,6 +782,7 @@ typedef struct {        /* DGPS/GNSS correction type */
     double prc;         /* pseudorange correction (PRC) (m) */
     double rrc;         /* range rate correction (RRC) (m/s) */
     int iod;            /* issue of data (IOD) */
+    int hfc;            /* hatch filter counter */
     double udre;        /* UDRE */
 } dgps_t;
 
@@ -1015,6 +1016,7 @@ typedef struct {        /* processing options type */
                         /* [reserved,constant,elevation,baseline,doppler,snr-max,snr, rcv_std] */
     double std[3];      /* initial-state std [0]bias,[1]iono [2]trop */
     double prn[6];      /* process-noise std [0]bias,[1]iono [2]trop [3]acch [4]accv [5] pos */
+    double initprn[3];  /* max process-noise [0]pos [1]vel [2]acc */
     double sclkstab;    /* satellite clock stability (sec/sec) */
     double thresar[8];  /* AR validation threshold */
     double elmaskar;    /* elevation mask of AR for rising satellite (deg) */
@@ -1041,6 +1043,7 @@ typedef struct {        /* processing options type */
     double odisp[2][6*11]; /* ocean tide loading parameters {rov,base} */
     int  freqopt;       /* disable L2-AR */
     char pppopt[256];   /* ppp option */
+    int hfilter;        /* reject data less than n time's of hfilter */
 } prcopt_t;
 
 typedef struct {        /* solution options type */
@@ -1295,6 +1298,37 @@ typedef struct {        /* RTK server type */
     double bl_reset;    /* baseline length to reset (km) */
     lock_t lock;        /* lock flag */
 } rtksvr_t;
+
+typedef struct {        /* DGPS server type */
+    int state;          /* server state (0:stop,1:running) */
+    int cycle;          /* processing cycle (ms) */
+    uint32_t tick;      /* start tick */
+
+    int buffsize;       /* input buffer size (bytes) */
+    int format[2];      /* input format {base,corr} */
+    int nb [2];         /* bytes in input buffers {base,corr} */
+    int nsb;            /* bytes in soulution buffers */
+    uint8_t *buff[2];   /* input buffers {base,corr} */
+    uint8_t *sbuff;     /* output buffers */
+    uint32_t nmsg[2][5]; /* input message counts {obs,eph,ion/utc,ant pos,err} */
+    raw_t  raw [2];     /* receiver raw control {base,corr} */
+    rtcm_t rtcm[2];     /* RTCM control {base,corr} */
+    obs_t obs[2][MAXOBSBUF]; /* observation data {base,corr} */
+    nav_t nav;          /* navigation data */
+    prcopt_t opt;       /* processing options */
+    double rb[6];       /* base position/velocity (ecef) (m|m/s) */
+    dgps_t dgps[MAXSAT];/* DGPS corrections  */
+    int nmeacycle;      /* NMEA request cycle (ms) (0:no req) */
+    int nmeareq;        /* NMEA request (0:no,1:nmeapos) */
+    double nmeapos[3];  /* NMEA request position (ecef) (m) */
+
+    thread_t thread;    /* server thread */
+    gtime_t time;       /* receive time */
+    int cputime;        /* CPU time (ms) for a processing cycle */
+    int prcout;         /* missing observation data count */
+    stream_t stream[5]; /* streams {base, corr, sol, logb, lobc} */
+    lock_t lock;        /* lock flag */
+} dgpssvr_t;
 
 typedef struct {        /* GIS data point type */
     double pos[3];      /* point data {lat,lon,height} (rad,m) */
@@ -1805,6 +1839,16 @@ EXPORT int  rtksvrostat (rtksvr_t *svr, int type, gtime_t *time, int *sat,
                          double *az, double *el, int **snr, int *vsat);
 EXPORT void rtksvrsstat (rtksvr_t *svr, int *sstat, char *msg);
 EXPORT int  rtksvrmark(rtksvr_t *svr, const char *name, const char *comment);
+
+/* dgps server functions ------------------------------------------------------*/
+EXPORT int  dgpssvrinit  (dgpssvr_t *svr);
+EXPORT void dgpssvrfree  (dgpssvr_t *svr);
+EXPORT int  dgpssvrstart (dgpssvr_t *svr, int cycle, int buffsize, int *strs,
+                          char **paths, int *formats, int nmeacycle,
+                          int nmeareq, const double *nmeapos, prcopt_t *prcopt, char *errmsg);
+EXPORT void dgpssvrstop  (dgpssvr_t *svr, char **cmds);
+EXPORT void dgpssvrlock  (dgpssvr_t *svr);
+EXPORT void dgpssvrunlock(dgpssvr_t *svr);
 
 /* downloader functions ------------------------------------------------------*/
 EXPORT int dl_readurls(const char *file, char **types, int ntype, url_t *urls,
