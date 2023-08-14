@@ -8,7 +8,7 @@ set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 message(${PROJECT_NAME} " " ${RTKLIB_VERSION})
 
-option(BUILD_TESTS "Build tests" ON)
+option(BUILD_TESTS "Build tests" OFF)
 
 aux_source_directory(${SRC_DIR} RTKLIB_SRC)
 aux_source_directory(${SRC_DIR}/rcv RTKLIB_SRC_RCV)
@@ -35,7 +35,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${RTKLIB_INCLUDE_DIR})
 
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} wsock32 winmm)
-elseif(UNIX)
+elseif(UNIX AND !ANDROID)
     target_link_libraries(${PROJECT_NAME} m rt pthread)
 endif()
 
