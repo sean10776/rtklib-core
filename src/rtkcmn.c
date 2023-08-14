@@ -214,6 +214,7 @@ const prcopt_t prcopt_default={ /* defaults processing options */
     {100.0,0.003,0.003,0.0,1.0,52.0,0.0,0.0}, /* err[-,base,el,bl,dop,snr_max,snr,rcverr] */
     {30.0,0.03,0.3},            /* std[] */
     {1E-4,1E-3,1E-4,1E-1,1E-2,0.0}, /* prn[] */
+    {30.0, 10.0, 10.0},         /* initprn[] */
     5E-12,                      /* sclkstab */
     {3.0,0.25,0.0,1E-9,1E-5,3.0,3.0,0.0}, /* thresar */
 	0.0,0.0,0.05,0,             /* elmaskar,elmaskhold,thresslip,thresdop, */
@@ -222,7 +223,8 @@ const prcopt_t prcopt_default={ /* defaults processing options */
     {0},{0},{0},                /* baseline,ru,rb */
     {"",""},                    /* anttype */
     {{0}},{{0}},{0},            /* antdel,pcv,exsats */
-    1,1                         /* maxaveep,initrst */
+    1,1,                        /* maxaveep,initrst */
+    0                           /* hfilter */
 };
 const solopt_t solopt_default={ /* defaults solution output options */
     SOLF_LLH,TIMES_GPST,1,3,    /* posf,times,timef,timeu */

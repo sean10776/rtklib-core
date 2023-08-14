@@ -494,10 +494,10 @@ static void udpos(rtk_t *rtk, double tt)
     /* initialize position for first epoch */
     if (norm(rtk->x,3)<=0.0) {
         trace(3,"rr_init=");tracemat(3,rtk->sol.rr,1,6,15,6);
-        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
+        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[0]),i);
         if (rtk->opt.dynamics) {
-            for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],VAR_VEL,i);
-            for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
+            for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[1]),i);
+            for (i=6;i<9;i++) initx(rtk,1E-6,SQR(rtk->opt.initprn[2]),i);
         }
     }
     /* static mode */
@@ -505,18 +505,18 @@ static void udpos(rtk_t *rtk, double tt)
     
     /* kinmatic mode without dynamics */
     if (!rtk->opt.dynamics) {
-        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
+        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[0]),i);
         return;
     }
     /* check variance of estimated position */
     for (i=0;i<3;i++) var+=rtk->P[i+i*rtk->nx];
     var/=3.0;
     
-    if (var>VAR_POS) {
+    if (var>SQR(rtk->opt.initprn[0])) {
         /* reset position with large variance */
-        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
-        for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],VAR_VEL,i);
-        for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
+        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[0]),i);
+        for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[1]),i);
+        for (i=6;i<9;i++) initx(rtk,1E-6,SQR(rtk->opt.initprn[2]),i);
         trace(2,"reset rtk position due to large variance: var=%.3f\n",var);
         return;
     }
@@ -1931,9 +1931,9 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     for (i=0;i<MAXSAT;i++) {
         rtk->ssat[i].sys=satsys(i+1,NULL); /* gnss system */
         for (j=0;j<NFREQ;j++) {
-            rtk->ssat[i].vsat[j]=0;  /* valid satellite */
-                rtk->ssat[i].snr_rover[j]=0;
-                rtk->ssat[i].snr_base[j] =0;
+            rtk->ssat[i].vsat[j]=0;                                               /* valid satellite */
+            rtk->ssat[i].snr_rover[j]=0;
+            rtk->ssat[i].snr_base[j] =0;
         }
     }
     /* compute satellite positions, velocities and clocks for base and rover */
@@ -2301,10 +2301,10 @@ extern int rtkpos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     /* return to static start if long delay without rover data */
     if (fabs(rtk->tt)>300&&rtk->initial_mode==PMODE_STATIC_START) {
         rtk->opt.mode=PMODE_STATIC_START;
-        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
+        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[0]),i);
         if (rtk->opt.dynamics) {
-            for (i=3;i<6;i++) initx(rtk,1E-6,VAR_VEL,i);
-            for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
+            for (i=3;i<6;i++) initx(rtk,1E-6,SQR(rtk->opt.initprn[1]),i);
+            for (i=6;i<9;i++) initx(rtk,1E-6,SQR(rtk->opt.initprn[2]),i);
         }
         trace(3,"No data for > 5 min: switch back to static mode:\n");
     }
