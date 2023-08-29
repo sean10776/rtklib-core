@@ -227,7 +227,7 @@ const prcopt_t prcopt_default={ /* defaults processing options */
     0                           /* hfilter */
 };
 const solopt_t solopt_default={ /* defaults solution output options */
-    SOLF_LLH,TIMES_GPST,1,3,    /* posf,times,timef,timeu */
+    SOLF_LLH,TIMES_UTC,1,3,    /* posf,times,timef,timeu */
     0,1,0,0,0,0,0,              /* degf,outhead,outopt,outvel,datum,height,geoid */
     0,0,0,                      /* solstatic,sstat,trace */
     {0.0,0.0},                  /* nmeaintv */
