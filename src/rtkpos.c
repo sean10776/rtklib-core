@@ -348,11 +348,11 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
         satno2id(i+1,id);
         for (j=0;j<nfreq;j++) {
             k=IB(i+1,j,&rtk->opt);
-            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%.4f,%.4f,%d,%.0f,%.0f,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
+            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%.4f,%.4f,%d,%.0f,%.0f,%d,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
                     week,tow,id,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,ssat->sdrp[j],ssat->sdrc[j],
                     ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->snr_rover[j]*SNR_UNIT,ssat->snr_base[j]*SNR_UNIT,
                     ssat->fix[j],ssat->slip[j]&3,ssat->lock[j],ssat->outc[j],
-                    ssat->slipc[j],ssat->rejc[j],rtk->x[k],
+                    ssat->slipc[j],ssat->ref[j],ssat->rejc[j],rtk->x[k],
                     rtk->P[k+k*rtk->nx],ssat->icbias[j]);
         }
     }
@@ -1282,8 +1282,8 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                         /* phase-bias states are single-differenced so need to difference them */
                         v[nv]-=CLIGHT/freqi*x[ii]-CLIGHT/freqj*x[jj];
                         if (H) {
-                        Hi[ii]= CLIGHT/freqi;
-                        Hi[jj]=-CLIGHT/freqj;
+                            Hi[ii]= CLIGHT/freqi;
+                            Hi[jj]=-CLIGHT/freqj;
                         }
                     }
                     else {
@@ -1859,12 +1859,13 @@ static int valpos(rtk_t *rtk, const double *v, const double *R, const int *vflg,
     
     /* post-fit residual test */
     for (i=0;i<nv;i++) {
-        if (v[i]*v[i]<=fact*R[i+i*nv]) continue;
         sat1=(vflg[i]>>16)&0xFF;
         sat2=(vflg[i]>> 8)&0xFF;
         type=(vflg[i]>> 4)&0xF;
         freq=vflg[i]&0xF;
         stype=type==0?"L":(type==1?"P":"C");
+        rtk->ssat[sat1-1].ref[freq]|=(1<<type); /* set ref type */
+        if (v[i]*v[i]<=fact*R[i+i*nv]) continue;
         errmsg(rtk,"large residual (sat=%2d-%2d %s%d v=%6.3f sig=%.3f)\n",
               sat1,sat2,stype,freq+1,v[i],SQRT(R[i+i*nv]));
     }
@@ -1940,6 +1941,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
             rtk->ssat[i].vsat[j]=0;                                               /* valid satellite */
             rtk->ssat[i].snr_rover[j]=0;
             rtk->ssat[i].snr_base[j] =0;
+            rtk->ssat[i].ref[j]=0;
         }
     }
     /* compute satellite positions, velocities and clocks */
@@ -2075,8 +2077,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
             if (zdres(0,obs,nu,rs,dts,var,svh,nav,xa,opt,0,y,e,azel,freq)) {
 
                 /* post-fit residuals for fixed solution (xa includes fixed phase biases, rtk->xa does not) */
-                nv=ddres(rtk,nav,obs,dt,xa,Pp,sat,y,e,azel,freq,iu,ir,ns,v,NULL,R,
-                         vflg);
+                nv=ddres(rtk,nav,obs,dt,xa,Pp,sat,y,e,azel,freq,iu,ir,ns,v,NULL,R,vflg);
 
                 /* validation of fixed solution, always returns valid */
                 if (valpos(rtk,v,R,vflg,nv,4.0)) {
@@ -2089,7 +2090,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
                         if (rtk->opt.mode==PMODE_STATIC_START) {
                             rtk->opt.mode=PMODE_KINEMA;
                             trace(3,"Fix and hold complete: switch to kinematic mode\n");
-                            }
+                        }
                     }
                     stat=SOLQ_FIX;
                 }
@@ -2111,7 +2112,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
             for (i=3;i<6;i++) {
                 rtk->sol.rr[i]=rtk->xa[i];
                 rtk->sol.qv[i-3]=(float)rtk->Pa[i+i*rtk->na];
-    }
+            }
             rtk->sol.qv[3]=(float)rtk->Pa[4+3*rtk->na];
             rtk->sol.qv[4]=(float)rtk->Pa[5+4*rtk->na];
             rtk->sol.qv[5]=(float)rtk->Pa[5+3*rtk->na];
