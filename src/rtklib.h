@@ -1146,6 +1146,8 @@ typedef struct {        /* satellite status type */
     double  sdrp[NFREQ];  /* single differential of pseudorange (m) */
     double  sdrc[NFREQ];  /* single differential of carrier-phase meas (cycle) */
     uint8_t ref[NFREQ];   /* reference satellite flag */
+    uint8_t code_rover[NFREQ];  /* rover obs code (CODE_)*/
+    uint8_t code_base[NFREQ];   /* base obs code (CODE_) */
 } ssat_t;
 
 typedef struct {        /* ambiguity control type */

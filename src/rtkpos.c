@@ -321,7 +321,7 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
 {
     ssat_t *ssat;
     double tow;
-    char buff[MAXSOLMSG+1],id[32],rid[32];
+    char buff[MAXSOLMSG+1],id[32],rid[32],code[10],rcode[10];
     int i,j,k,n,week,nfreq,nf=NF(&rtk->opt);
     
     if (statlevel<=0||!fp_stat||!rtk->sol.stat) return;
@@ -348,10 +348,12 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
         satno2id(i+1,id);
         for (j=0;j<nfreq;j++) {
             k=IB(i+1,j,&rtk->opt);
-            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%.4f,%.4f,%d,%.0f,%.0f,%d,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
+            strcpy(code, code2obs(ssat->code_rover[j]));
+            strcpy(rcode, code2obs(ssat->code_base[j]));
+            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%.4f,%.4f,%d,%.0f,%.0f,%s,%s,%d,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
                     week,tow,id,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,ssat->sdrp[j],ssat->sdrc[j],
                     ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->snr_rover[j]*SNR_UNIT,ssat->snr_base[j]*SNR_UNIT,
-                    ssat->fix[j],ssat->slip[j]&3,ssat->lock[j],ssat->outc[j],
+                    code,rcode,ssat->fix[j],ssat->slip[j]&3,ssat->lock[j],ssat->outc[j],
                     ssat->slipc[j],ssat->ref[j],ssat->rejc[j],rtk->x[k],
                     rtk->P[k+k*rtk->nx],ssat->icbias[j]);
         }
@@ -1942,6 +1944,8 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
             rtk->ssat[i].snr_rover[j]=0;
             rtk->ssat[i].snr_base[j] =0;
             rtk->ssat[i].ref[j]=0;
+            rtk->ssat[i].code_rover[j]=0;
+            rtk->ssat[i].code_base[j] =0;
         }
     }
     /* compute satellite positions, velocities and clocks */
@@ -1980,6 +1984,9 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
         /* snr of base and rover receiver */
         rtk->ssat[sat[i]-1].snr_rover[j]=obs[iu[i]].SNR[j];
         rtk->ssat[sat[i]-1].snr_base[j] =obs[ir[i]].SNR[j]; 
+        /* obs code  */
+        rtk->ssat[sat[i]-1].code_rover[j] = obs[iu[i]].code[j];
+        rtk->ssat[sat[i]-1].code_base[j]  = obs[ir[i]].code[j];
     }
     
     /* initialize Pp,xa to zero, xp to rtk->x */
