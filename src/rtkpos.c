@@ -1324,7 +1324,7 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                 
                 /* save residuals */
                 if (code) rtk->ssat[sat[j]-1].resp[frq]=v[nv];  /* pseudorange */
-                else      rtk->ssat[sat[j]-1].resc[frq]=v[nv];  /* carrier phase */
+                else      rtk->ssat[sat[j]-1].resc[frq]=v[nv]/CLIGHT*freqj;  /* carrier phase */
 
                 /* open up outlier threshold if one of the phase biases was just initialized*/
                 threshadj=(P[ii+rtk->nx*ii]==SQR(rtk->opt.std[0]))||
