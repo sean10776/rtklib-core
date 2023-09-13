@@ -85,6 +85,13 @@ static void writesol(rtksvr_t *svr, int index)
             n=rtkoutstat(&svr->rtk,(char *)buff);
             rtksvrunlock(svr);
         }
+        else if(svr->solopt[i].posf==SOLF_NTOU){
+            n=outntou(buff, &svr->rtk.sol, strtok(svr->stream[3+i].path, ":"),
+                svr->sitename, svr->EV, svr->CPU, svr->CS);
+        }
+        else if(svr->solopt[i].posf==SOLF_NTOU_OLD){
+            n=outntouold(buff, &svr->rtk.sol, strtok(svr->stream[3+i].path, ":"), svr->sitename);
+        }
         else {
             /* output solution */
             n=outsols(buff,&svr->rtk.sol,svr->rtk.rb,svr->solopt+i);
@@ -520,6 +527,7 @@ static void send_nmea(rtksvr_t *svr, uint32_t *tickreset)
 		sol_nmea.stat=SOLQ_SINGLE;
 		sol_nmea.time=utc2gpst(timeget());
 		matcpy(sol_nmea.rr,svr->nmeapos,3,1);
+		strsendnmea(svr->stream,&sol_nmea);
 		strsendnmea(svr->stream+1,&sol_nmea);
 	}
 	else if (svr->nmeareq==2) { /* single-solution mode */
@@ -527,6 +535,7 @@ static void send_nmea(rtksvr_t *svr, uint32_t *tickreset)
 		sol_nmea.stat=SOLQ_SINGLE;
 		sol_nmea.time=utc2gpst(timeget());
 		matcpy(sol_nmea.rr,svr->rtk.sol.rr,3,1);
+		strsendnmea(svr->stream,&sol_nmea);
 		strsendnmea(svr->stream+1,&sol_nmea);
 	}
 	else if (svr->nmeareq==3) { /* reset-and-single-sol mode */
@@ -552,6 +561,7 @@ static void send_nmea(rtksvr_t *svr, uint32_t *tickreset)
 				sol_nmea.rr[i]+=svr->rtk.sol.rr[i+3]/vel*svr->bl_reset*0.8;
 			}
 		}
+		strsendnmea(svr->stream,&sol_nmea);
 		strsendnmea(svr->stream+1,&sol_nmea);
 
 		tracet(3,"send nmea: rr=%.3f %.3f %.3f\n",sol_nmea.rr[0],sol_nmea.rr[1],

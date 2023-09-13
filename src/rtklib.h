@@ -57,9 +57,9 @@ extern "C" {
 
 /* constants -----------------------------------------------------------------*/
 
-#define VER_RTKLIB  "demo5"             /* library version */
+#define VER_RTKLIB  "1.0.0"             /* library version */
 
-#define PATCH_LEVEL "b34g"               /* patch level */
+#define PATCH_LEVEL ""               /* patch level */
 
 #define COPYRIGHT_RTKLIB \
             "Copyright (C) 2007-2020 T.Takasu\nAll rights reserved."
@@ -1701,7 +1701,7 @@ EXPORT int outnmea_gsa(uint8_t *buff, const sol_t *sol,
                        const ssat_t *ssat);
 EXPORT int outnmea_gsv(uint8_t *buff, const sol_t *sol,
                        const ssat_t *ssat);
-EXPORT int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, char *CPU, char *CS);
+EXPORT int outntou(uint8_t *buff, const sol_t *sol, char *hostname, char *sitename, char *EV, char *CPU, char *CS);
 EXPORT int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sitename);
 
 /* google earth kml converter ------------------------------------------------*/
@@ -1762,7 +1762,6 @@ EXPORT void strsendcmd(stream_t *stream, const char *cmd);
 EXPORT void strsettimeout(stream_t *stream, int toinact, int tirecon);
 EXPORT void strsetdir(const char *dir);
 EXPORT void strsetproxy(const char *addr);
-EXPORT void httprequest(const char *addr, int port, char *imsg, char *omsg);
 
 /* integer ambiguity resolution ----------------------------------------------*/
 EXPORT int lambda(int n, int m, const double *a, const double *Q, double *F,
