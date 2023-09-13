@@ -2682,7 +2682,7 @@ static void *httpreqthread(void *arg)
     closesocket(socket_fd);
     httpreq->state=2;
     unlock(&httpreq->lock);
-    return 1;
+    return 0;
 
 socket_error:
     httpreq->state=-1;
@@ -2697,6 +2697,7 @@ static int writehttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
 
     if(httpreq->state<=0 || httpreq->state==2){
         //copy http payload from input buffer
+        n=n<65535?n:65535-1;
         strncpy(httpreq->payload, buff, n);
         httpreq->payload[n] = '\0';
         httpreq->state=1;
@@ -2708,7 +2709,7 @@ static int writehttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
             return 0;
         }
     }
-    return 0;
+    return n;
 }
 /* read http request ---------------------------------------------------------*/
 static int readhttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
