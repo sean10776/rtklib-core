@@ -757,6 +757,11 @@ extern int rtksvrinit(rtksvr_t *svr)
     *svr->cmd_reset='\0';
     svr->bl_reset=10.0;
     initlock(&svr->lock);
+
+    memset(svr->sitename, 0, sizeof(svr->sitename));
+    memset(svr->EV, 0, sizeof(svr->EV));
+    memset(svr->CPU, 0, sizeof(svr->CPU));
+    memset(svr->CS, 0, sizeof(svr->CS));
     
     return 1;
 }

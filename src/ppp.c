@@ -331,7 +331,7 @@ static double varerr(int sat, int sys, double el, double snr_rover,
     double sinel=sin(el),var;
     int nf=NF(opt),frq,code;
 
-    frq=f%nf;code=f<nf?0:1;
+    frq=f/2;code=f%2; /* 0=phase, 1=code */
     /* increase variance for pseudoranges */
     if (code) fact=opt->eratio[frq];
     if (fact<=0.0) fact=opt->eratio[0];
@@ -395,6 +395,7 @@ static double mwmeas(const obsd_t *obs, const nav_t *nav)
     
     if (freq1==0.0||freq2==0.0||obs->L[0]==0.0||obs->L[1]==0.0||
         obs->P[0]==0.0||obs->P[1]==0.0) return 0.0;
+    trace(3,"mwmeas: %12.1f %12.1f %15.3f %15.3f %15.3f %15.3f %d %d\n",freq1,freq2,obs->L[0],obs->L[1],obs->P[0],obs->P[1],obs->code[0],obs->code[1]);
     return (obs->L[0]-obs->L[1])*CLIGHT/(freq1-freq2)-
            (freq1*obs->P[0]+freq2*obs->P[1])/(freq1+freq2);
 }
@@ -405,9 +406,9 @@ static void corr_meas(const obsd_t *obs, const nav_t *nav, const double *azel,
                       double *Lc, double *Pc)
 {
     double freq[NFREQ]={0},C1,C2;
-    int i,ix=0,frq2, sys=satsys(obs->sat,NULL);
+    int i,ix=0,frq,frq2,bias_ix,sys=satsys(obs->sat,NULL);
     
-    for (i=0;i<NFREQ;i++) {
+    for (i=0;i<opt->nf;i++) {
         L[i]=P[i]=0.0;
         /* skip if low SNR or missing observations */
         freq[i]=sat2freq(obs->sat,obs->code[i],nav);
@@ -429,14 +430,13 @@ static void corr_meas(const obsd_t *obs, const nav_t *nav, const double *azel,
             /* apply SSR correction */
             P[i]+=(nav->ssr[obs->sat-1].cbias[obs->code[i]-1]-nav->ssr[obs->sat-1].cbias[ix]);
         }
-        else {   /* use P1-C1,P2-C2 code corrections from DCB file */
-            /* P1-C1,P2-C2 dcb correction (C1->P1,C2->P2) */
-            if (sys==SYS_GPS||sys==SYS_GLO) {
-                if (obs->code[i]==CODE_L1C) 
-                    P[i]+=nav->cbias[obs->sat-1][1];  /* C1->P1 */
-                if (obs->code[i]==CODE_L2C||obs->code[i]==CODE_L2X||
-                     obs->code[i]==CODE_L2L||obs->code[i]==CODE_L2S) 
-                        P[i]+=nav->cbias[obs->sat-1][2]; /* C2->P2 */
+        else {   /* apply code bias corrections from file */
+            if (sys==SYS_GAL&&(i==1||i==2)) frq=3-i;  /* GAL biases are L1/L5 */
+            else frq=i;  /* other biases are L1/L2 */
+            if (frq>1) continue;  /* only 2 freqs per system supported in code bias table */
+            bias_ix=code2bias_ix(sys,obs->code[i]); /* look up bias index in table */
+            if (bias_ix>0) {  /*  0=ref code */
+                P[i]+=nav->cbias[obs->sat-1][frq][bias_ix-1]; /* code bias */
             }
         }
     }
@@ -659,7 +659,7 @@ static void udiono_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
 {
     double freq1,freq2,ion,sinel,pos[3],*azel;
     char *p;
-    int i,j,gap_resion=GAP_RESION;
+    int i,j,f2,gap_resion=GAP_RESION,sat;
     
     trace(3,"udiono_ppp:\n");
     
@@ -674,24 +674,27 @@ static void udiono_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
         }
     }
     for (i=0;i<n;i++) {
-        j=II(obs[i].sat,&rtk->opt);
+        sat=obs[i].sat;
+        j=II(sat,&rtk->opt);
         if (rtk->x[j]==0.0) {
             /* initialize ionosphere delay estimates if zero */
-            freq1=sat2freq(obs[i].sat,obs[i].code[0],nav);
-            freq2=sat2freq(obs[i].sat,obs[i].code[1],nav);
-            if (obs[i].P[0]==0.0||obs[i].P[1]==0.0||freq1==0.0||freq2==0.0) {
+            f2=seliflc(rtk->opt.nf,satsys(sat,NULL));
+            freq1=sat2freq(sat,obs[i].code[0],nav);
+            freq2=sat2freq(sat,obs[i].code[f2],nav);
+            if (obs[i].P[0]==0.0||obs[i].P[f2]==0.0||freq1==0.0||freq2==0.0) {
                 continue;
             }
             /* use pseudorange difference adjusted by freq for initial estimate */
-            ion=(obs[i].P[0]-obs[i].P[1])/(SQR(FREQL1/freq1)-SQR(FREQL1/freq2));
+            ion=(obs[i].P[0]-obs[i].P[f2])/(SQR(FREQL1/freq1)-SQR(FREQL1/freq2));
             ecef2pos(rtk->sol.rr,pos);
-            azel=rtk->ssat[obs[i].sat-1].azel;
+            azel=rtk->ssat[sat-1].azel;
             /* adjust delay estimate by path length */
             ion/=ionmapf(pos,azel);
             initx(rtk,ion,VAR_IONO,j);
+            trace(4,"ion init: sat=%d ion=%.4f\n",sat,ion);
         }
         else {
-            sinel=sin(MAX(rtk->ssat[obs[i].sat-1].azel[1],5.0*D2R));
+            sinel=sin(MAX(rtk->ssat[sat-1].azel[1],5.0*D2R));
             /* update variance of delay state */
             rtk->P[j+j*rtk->nx]+=SQR(rtk->opt.prn[1]/sinel)*fabs(rtk->tt);
         }
@@ -953,7 +956,7 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
             continue;
         }
         if (!(sys=satsys(sat,NULL))||!rtk->ssat[sat-1].vs||
-            satexclude(obs[i].sat,var_rs[i],svh[i],opt)||exc[i]) {
+            satexclude(sat,var_rs[i],svh[i],opt)||exc[i]) {
             exc[i]=1;
             continue;
         }
@@ -1028,7 +1031,7 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
             else        rtk->ssat[sat-1].resp[frq]=v[nv];   /* pseudorange */
             
             /* variance */
-            var[nv]=varerr(obs[i].sat,sys,azel[1+i*2],
+            var[nv]=varerr(sat,sys,azel[1+i*2],
                     SNR_UNIT*rtk->ssat[sat-1].snr_rover[frq],
                     j,opt,obs+i);
             var[nv] +=vart+SQR(C)*vari+var_rs[i];
@@ -1173,7 +1176,7 @@ extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     rs=mat(6,n); dts=mat(2,n); var=mat(1,n); azel=zeros(2,n);
     
     for (i=0;i<MAXSAT;i++) for (j=0;j<opt->nf;j++) rtk->ssat[i].fix[j]=0;
-    for (i=0;i<MAXOBS;i++) for (j=0;j<opt->nf;j++) {
+    for (i=0;i<n&&i<MAXOBS;i++) for (j=0;j<opt->nf;j++) {
         rtk->ssat[obs[i].sat-1].snr_rover[j]=obs[i].SNR[j];
         rtk->ssat[obs[i].sat-1].snr_base[j] =0;
     }

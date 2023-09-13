@@ -112,7 +112,7 @@ typedef enum { false, true } bool;
 
 /* max std-dev for valid carrier-phases */
 #define MAX_CPSTD_VALID_GEN8 5       /* optimal value for Gen8 modules  */
-#define MAX_CPSTD_VALID_GEN9 8       /* optimal value for Gen9 modules  */
+#define MAX_CPSTD_VALID_GEN9 14      /* optimal value for Gen9 modules  */
 #define CPSTD_SLIP 15                /* std-dev threshold for slip */
 
 #define ROUND(x)    (int)floor((x)+0.5)
@@ -481,10 +481,12 @@ static int decode_rxmrawx(raw_t *raw)
         if (slip) raw->lockflag[sat-1][idx]=slip;
         raw->lockt[sat-1][idx]=lockt*1E-3;
         raw->halfc[sat-1][idx]=halfc;
-        /* LLI: bit1=slip,bit2=half-cycle-invalid ??? */
+        /* LLI: bit0=slip,bit1=half-cycle-unresolved */
         LLI=!halfv&&L!=0.0?LLI_HALFC:0;
-        /* set cycle slip if half cycle bit changed state */
-        LLI|=halfc!=raw->halfc[sat-1][idx]?1:0;
+        /* half cycle adjusted */
+        LLI|=halfc?LLI_HALFA:0; 
+        /* set cycle slip if half cycle subtract bit changed state */
+        LLI|=halfc!=raw->halfc[sat-1][idx]?LLI_SLIP:0;
         /* set cycle slip flag if first valid phase since slip */
         if (L!=0.0) LLI|=raw->lockflag[sat-1][idx]>0.0?LLI_SLIP:0;
 
@@ -1243,6 +1245,8 @@ static int decode_timtm2(raw_t *raw)
     if (newFallingEdge)
     {
         eventime = gpst2time(wnF,towMsF*1E-3+towSubMsF*1E-9);
+        if (timeBase==2) /* if timeBase is UTC, convert to GPS */
+            eventime = utc2gpst(eventime);
         raw->obs.flag = 5; /* Event flag */
         raw->obs.data[0].eventime = eventime;
         raw->obs.rcvcount = count;
@@ -1521,7 +1525,7 @@ extern int gen_ubx(const char *msg, uint8_t *buff)
     q+=2;
 
 
-    if (i == 34) isvalset = true;
+    if (i == 36) isvalset = true;
 
     /* VALSET sanity check */
     if (isvalset) {

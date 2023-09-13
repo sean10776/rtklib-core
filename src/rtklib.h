@@ -372,6 +372,8 @@ extern "C" {
 #define SOLF_NMEA   3                   /* solution format: NMEA-183 */
 #define SOLF_STAT   4                   /* solution format: solution status */
 #define SOLF_GSIF   5                   /* solution format: GSI F1/F2 */
+#define SOLF_NTOU   6                   /* solution format: ntou tcp get message */
+#define SOLF_NTOU_OLD   7               /* solution format: ntou tcp get message (old api version) */
 
 #define SOLQ_NONE   0                   /* solution status: no solution */
 #define SOLQ_FIX    1                   /* solution status: fix */
@@ -382,6 +384,13 @@ extern "C" {
 #define SOLQ_PPP    6                   /* solution status: PPP */
 #define SOLQ_DR     7                   /* solution status: dead reconing */
 #define MAXSOLQ     7                   /* max number of solution status */
+
+#define SOLTYPE_FORWARD  0              /* solution type: forward */
+#define SOLTYPE_BACKWARD 1              /* solution type: backward */
+#define SOLTYPE_COMBINED 2              /* solution type: combined */
+#define SOLTYPE_COMBINED_NORESET 3      /* solution type: combined no phase reset*/
+#define SOLMODE_SINGLE_DIR 0            /* single direction solution */
+#define SOLMODE_COMBINED 1              /* combined solution */
 
 #define TIMES_GPST  0                   /* time system: gps time */
 #define TIMES_UTC   1                   /* time system: utc */
@@ -401,7 +410,6 @@ extern "C" {
 #define TROPOPT_SBAS 2                  /* troposphere option: SBAS model */
 #define TROPOPT_EST 3                   /* troposphere option: ZTD estimation */
 #define TROPOPT_ESTG 4                  /* troposphere option: ZTD+grad estimation */
-#define TROPOPT_ZTD 5                   /* troposphere option: ZTD correction */
 
 #define EPHOPT_BRDC 0                   /* ephemeris option: broadcast ephemeris */
 #define EPHOPT_PREC 1                   /* ephemeris option: precise ephemeris */
@@ -413,8 +421,6 @@ extern "C" {
 #define ARMODE_CONT 1                   /* AR mode: continuous */
 #define ARMODE_INST 2                   /* AR mode: instantaneous */
 #define ARMODE_FIXHOLD 3                /* AR mode: fix and hold */
-#define ARMODE_WLNL 4                   /* AR mode: wide lane/narrow lane */
-#define ARMODE_TCAR 5                   /* AR mode: triple carrier ar */
 
 #define GLO_ARMODE_OFF  0               /* GLO AR mode: off */
 #define GLO_ARMODE_ON 1                 /* GLO AR mode: on */
@@ -529,9 +535,13 @@ extern "C" {
 #else
 #define thread_t    pthread_t
 #define lock_t      pthread_mutex_t
-#define initlock(f) pthread_mutex_init(f,NULL)
+#if defined( INHIBIT_RTK_LOCK_MACROS)
+#else
+/* these defs break apple mutex */
+#define initlock(f) pthread_mutex_init((f),NULL)
 #define lock(f)     pthread_mutex_lock(f)
 #define unlock(f)   pthread_mutex_unlock(f)
+#endif
 #define FILEPATHSEP '/'
 #endif
 
@@ -833,7 +843,7 @@ typedef struct {        /* navigation data type */
     double ion_cmp[8];  /* BeiDou iono model parameters {a0,a1,a2,a3,b0,b1,b2,b3} */
     double ion_irn[8];  /* IRNSS iono model parameters {a0,a1,a2,a3,b0,b1,b2,b3} */
     int glo_fcn[32];    /* GLONASS FCN + 8 */
-    double cbias[MAXSAT][3]; /* satellite DCB (0:P1-P2,1:P1-C1,2:P2-C2) (m) */
+    double cbias[MAXSAT][2][3]; /* satellite DCB [0:P1-C1,1:P2-C2][code] (m) */
     double rbias[MAXRCV][2][3]; /* receiver DCB (0:P1-P2,1:P1-C1,2:P2-C2) (m) */
     pcv_t pcvs[MAXSAT]; /* satellite antenna pcv */
     sbssat_t sbssat;    /* SBAS satellite corrections */
@@ -1131,7 +1141,7 @@ typedef struct {        /* satellite status type */
     uint8_t vsat[NFREQ]; /* valid satellite flag */
     uint16_t snr_rover [NFREQ]; /* rover signal strength (0.25 dBHz) */
     uint16_t snr_base  [NFREQ]; /* base signal strength (0.25 dBHz) */
-    uint8_t fix [NFREQ]; /* ambiguity fix flag (1:fix,2:float,3:hold) */
+    uint8_t fix [NFREQ]; /* ambiguity fix flag (1:float,2:fix,3:hold) */
     uint8_t slip[NFREQ]; /* cycle-slip flag */
     uint8_t half[NFREQ]; /* half-cycle valid flag */
     int lock [NFREQ];   /* lock counter of phase */
@@ -1171,6 +1181,7 @@ typedef struct {        /* RTK control/result type */
     char errbuf[MAXERRMSG]; /* error message buffer */
     prcopt_t opt;       /* processing options */
     int initial_mode;   /* initial positioning mode */
+    int epoch;          /* epoch number */
 } rtk_t;
 
 typedef struct {        /* receiver raw data control type */
@@ -1189,7 +1200,7 @@ typedef struct {        /* receiver raw data control type */
     unsigned char lockflag[MAXSAT][NFREQ+NEXOBS]; /* used for carrying forward cycle slip */
     double icpp[MAXSAT],off[MAXSAT],icpc; /* carrier params for ss2 */
     double prCA[MAXSAT],dpCA[MAXSAT]; /* L1/CA pseudrange/doppler for javad */
-    uint8_t halfc[MAXSAT][NFREQ+NEXOBS]; /* half-cycle add flag */
+    uint8_t halfc[MAXSAT][NFREQ+NEXOBS]; /* half-cycle resolved */
     char freqn[MAXOBS]; /* frequency number for javad */
     int nbyte;          /* number of bytes in message buffer */ 
     int len;            /* message length (bytes) */
@@ -1294,6 +1305,12 @@ typedef struct {        /* RTK server type */
     char cmd_reset[MAXRCVCMD]; /* reset command */
     double bl_reset;    /* baseline length to reset (km) */
     lock_t lock;        /* lock flag */
+    
+    /** new */
+    char sitename[MAXSTRPATH]; /* site name shown on ntou web */
+    char EV[50];
+    char CPU[50];
+    char CS[50];
 } rtksvr_t;
 
 typedef struct {        /* GIS data point type */
@@ -1561,6 +1578,7 @@ EXPORT int  getseleph(int sys);
 EXPORT void readsp3(const char *file, nav_t *nav, int opt);
 EXPORT int  readsap(const char *file, gtime_t time, nav_t *nav);
 EXPORT int  readdcb(const char *file, nav_t *nav, const sta_t *sta);
+EXPORT int code2bias_ix(const int sys,const int code);
 EXPORT int  readfcb(const char *file, nav_t *nav);
 EXPORT void alm2pos(gtime_t time, const alm_t *alm, double *rs, double *dts);
 
