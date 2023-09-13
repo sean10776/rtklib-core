@@ -357,7 +357,7 @@ static serial_t *openserial(const char *path, int mode, char *msg)
 {
     const int br[]={
         300,600,1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,
-        921600
+        921600,3000000
     };
     serial_t *serial;
     int i,brate=115200,bsize=8,stopb=1,tcp_port=0;
@@ -376,7 +376,7 @@ static serial_t *openserial(const char *path, int mode, char *msg)
 #else /* regular Linux with higher baudrates */
     const speed_t bs[]={
         B300,B600,B1200,B2400,B4800,B9600,B19200,B38400,B57600,B115200,B230400,
-        B460800,B921600
+        B460800,B921600,B3000000
     };
 #endif /* ifdef __APPLE__ */
     struct termios ios={0};
@@ -395,8 +395,8 @@ static serial_t *openserial(const char *path, int mode, char *msg)
     if ((p=strchr(path,'#'))) {
         sscanf(p,"#%d",&tcp_port);
     }
-    for (i=0;i<13;i++) if (br[i]==brate) break;
-    if (i>=14) {
+    for (i=0;i<14;i++) if (br[i]==brate) break;
+    if (i>=15) {
         sprintf(msg,"bitrate error (%d)",brate);
         tracet(1,"openserial: %s path=%s\n",msg,path);
         free(serial);
@@ -609,7 +609,7 @@ static int openfile_(file_t *file, gtime_t time, char *msg)
     if ((file->mode&STR_MODE_W)&&!(file->mode&STR_MODE_R)) {
         createdir(file->openpath);
     }
-    if (file->mode&STR_MODE_R) rw="rb"; else rw="wb";
+    if (file->mode&STR_MODE_R) rw="rb"; else rw="ab";
     
     if (!(file->fp=fopen(file->openpath,rw))) {
         sprintf(msg,"file open error: %s",file->openpath);
@@ -3378,9 +3378,3 @@ extern void strsendcmd(stream_t *str, const char *cmd)
         if (*q=='\0') break; else p=q+1;
     }
 }
-/* send http request -------------------------------------------------------
-* send http request
-* args   : stream_t *stream I   stream
-*          char   *cmd      I   receiver command strings
-* return : none
-*-----------------------------------------------------------------------------*/
