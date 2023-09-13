@@ -104,7 +104,7 @@
 #define MAXSTATMSG          32          /* max length of status message */
 #define DEFAULT_MEMBUF_SIZE 4096        /* default memory buffer size (bytes) */
 
-#define NTRIP_AGENT         "RTKLIB/" VER_RTKLIB "_" PATCH_LEVEL
+#define NTRIP_AGENT         "ntourtkrcv/" VER_RTKLIB "_" PATCH_LEVEL
 #define NTRIP_CLI_PORT      2101        /* default ntrip-client connection port */
 #define NTRIP_SVR_PORT      80          /* default ntrip-server connection port */
 #define NTRIP_MAXRSP        32768       /* max size of ntrip response */
@@ -2793,6 +2793,7 @@ extern void strinit(stream_t *stream)
 *                                 STR_MEMBUF   = memory buffer (FIFO)
 *                                 STR_FTP      = download by FTP (raed only)
 *                                 STR_HTTP     = download by HTTP (raed only)
+*                                 STR_HTTPREQ  = HTTP request (write only)
 *          int mode         I   stream mode (STR_MODE_???)
 *                                 STR_MODE_R   = read only
 *                                 STR_MODE_W   = write only
@@ -2883,6 +2884,10 @@ extern void strinit(stream_t *stream)
 *                    tint  = download interval (s)
 *                    toff  = download time offset (s)
 *                    tret  = download retry interval (s) (0:no retry)
+*
+*   STR_HTTPREQ  addr:port
+*                    addr  = HTTP server address
+*                    port  = HTTP server port
 *
 *-----------------------------------------------------------------------------*/
 extern int stropen(stream_t *stream, int type, int mode, const char *path)

@@ -1430,7 +1430,7 @@ extern int outnmea_gsv(uint8_t *buff, const sol_t *sol, const ssat_t *ssat)
     return (int)(p-(char *)buff);
 }
 /* output solution in the form of ntou tcp get message -------------------------*/
-extern int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, char *CPU, char *CS)
+extern int outntou(uint8_t *buff, const sol_t *sol, char *hostname, char *sitename, char *EV, char *CPU, char *CS)
 {
     gtime_t time;
     double h,ep[6],pos[3],twd[3],dms1[3],dms2[3],dop=1.0;
@@ -1465,8 +1465,7 @@ extern int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, ch
     p+=sprintf(p, "%s%s", "&CPU=", CPU);
     p+=sprintf(p, "%s%s", "&CS=", CS);
     p+=sprintf(p, "%s", " HTTP/1.1\r\n");
-    p+=sprintf(p, "%s", "Host:");
-    p+=sprintf(p, "%s", "140.121.130.58");
+    p+=sprintf(p, "%s%s", "Host:", hostname);
     p+=sprintf(p, "%s", "\r\nConnection: close \r\n\r\n");
 
     return (int)(p-(char *)buff);
@@ -1505,8 +1504,7 @@ extern int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sit
     p+=sprintf(p, "%s%f", "&Z=", twd[2]);
     p+=sprintf(p, "%s%1d", "&RMS=", solq);
     p+=sprintf(p, "%s", " HTTP/1.1\r\n");
-    p+=sprintf(p, "%s", "Host:");
-    p+=sprintf(p, "%s", hostname);
+    p+=sprintf(p, "%s%s", "Host:", hostname);
     p+=sprintf(p, "%s", "\r\nConnection: close \r\n\r\n");
     return (int)(p-(char *)buff);
 }
