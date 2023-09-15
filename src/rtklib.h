@@ -374,6 +374,7 @@ extern "C" {
 #define SOLF_GSIF   5                   /* solution format: GSI F1/F2 */
 #define SOLF_NTOU   6                   /* solution format: ntou tcp get message */
 #define SOLF_NTOU_OLD   7               /* solution format: ntou tcp get message (old api version) */
+#define SOLF_BASE_INFO  8               /* solution format: output base info */
 
 #define SOLQ_NONE   0                   /* solution status: no solution */
 #define SOLQ_FIX    1                   /* solution status: fix */
@@ -1703,6 +1704,7 @@ EXPORT int outnmea_gsv(uint8_t *buff, const sol_t *sol,
                        const ssat_t *ssat);
 EXPORT int outntou(uint8_t *buff, const sol_t *sol, char *hostname, char *sitename, char *EV, char *CPU, char *CS);
 EXPORT int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sitename);
+EXPORT int outbaseinfo(uint8_t *buff, const rtk_t *rtk, const rtcm_t *rtcm);
 
 /* google earth kml converter ------------------------------------------------*/
 EXPORT int convkml(const char *infile, const char *outfile, gtime_t ts,

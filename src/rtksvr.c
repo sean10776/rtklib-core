@@ -92,6 +92,9 @@ static void writesol(rtksvr_t *svr, int index)
         else if(svr->solopt[i].posf==SOLF_NTOU_OLD){
             n=outntouold(buff, &svr->rtk.sol, strtok(svr->stream[3+i].path, ":"), svr->sitename);
         }
+        else if(svr->solopt[i].posf==SOLF_BASE_INFO){
+            n=outbaseinfo(buff, &svr->rtk, svr->rtcm+1);
+        }
         else {
             /* output solution */
             n=outsols(buff,&svr->rtk.sol,svr->rtk.rb,svr->solopt+i);

@@ -1508,6 +1508,26 @@ extern int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sit
     p+=sprintf(p, "%s", "\r\nConnection: close \r\n\r\n");
     return (int)(p-(char *)buff);
 }
+/* output base info */
+extern int outbaseinfo(uint8_t *buff, const rtk_t *rtk, const rtcm_t *rtcm)
+{
+    sta_t ant=rtcm->sta;
+    gtime_t time=rtk->sol.time;
+    double *rb=rtk->rb,ep[6];
+    char *p=(char *)buff,*q,sum;
+    
+    trace(3,"outbaseinfo:\n");
+    time2epoch(time,ep);
+    p+=sprintf(p, "%4d/%02d/%02d %02d:%02d:%05.2f,",
+        (int)ep[0], (int)ep[1], (int)ep[2], (int)ep[3], (int)ep[4], ep[5]);
+    p+=sprintf(p, "%.6f/%.6f/%.6f,",rb[0],rb[1],rb[2]);
+    p+=sprintf(p, "%.6f/%.6f/%.6f,",ant.pos[0],ant.pos[1],ant.pos[2]);
+    p+=sprintf(p, "%s,", ant.deltype==0?"ENU":"XYZ");
+    p+=sprintf(p, "%.6f/%.6f/%.6f,",ant.del[0],ant.del[1],ant.del[2]);
+    p+=sprintf(p, "%.6f\n",ant.hgt);
+    p+=sprintf(p, "%s,%s,%s,%s,%s\n",ant.antdes,ant.antsno,ant.rectype,ant.recver,ant.recsno);
+    return (int)(p-(char *)buff);
+}
 /* output processing options ---------------------------------------------------
 * output processing options to buffer
 * args   : uint8_t *buff    IO  output buffer
