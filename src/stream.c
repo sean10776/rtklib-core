@@ -2615,7 +2615,7 @@ static void closehttpreq(httpreq_t *httpreq)
 {
     tracet(3,"closehttpreq:\n");
 #ifdef WIN32
-    if(httpreq->thread) WaitForSingleObject(httpreq->thread,INFINITE);
+    if(httpreq->thread) WaitForSingleObject(httpreq->thread, 1000);
     CloseHandle(httpreq->thread);
 #else
     if(httpreq->thread) pthread_join(httpreq->thread,NULL);
@@ -2669,14 +2669,11 @@ static void *httpreqthread(void *arg)
     // 接收和處理HTTP響應
     char *p = httpreq->response;
     httpreq->p = p;
-    while (1) {
-        memset(buffer, 0, 65536);
-        int bytes_received = recv(socket_fd, buffer, 65536 - 1, 0);
-        if (bytes_received <= 0) break;
+    if (recv(socket_fd, buffer, 65536 - 1, 0)){
         p += sprintf(p, "%s", buffer);
+        p += sprintf(p, "\0");
+        httpreq->q = p;
     }
-    p += sprintf(p, "\0");
-    httpreq->q = p;
     
     // 關閉Socket
     closesocket(socket_fd);

@@ -1439,7 +1439,7 @@ extern int outntou(uint8_t *buff, const sol_t *sol, char *hostname, char *sitena
 
     trace(3,"outnmea_gga:\n");
 
-    if (sol->stat<=SOLQ_NONE) {
+    if (sol->stat<=SOLQ_NONE || !strlen(sitename)) {
         return (int)(p-(char *)buff);
     }
     for (solq=0;solq<8;solq++) if (nmea_solq[solq]==sol->stat) break;
@@ -1480,7 +1480,7 @@ extern int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sit
 
     trace(3,"outnmea_gga:\n");
 
-    if (sol->stat<=SOLQ_NONE) {
+    if (sol->stat<=SOLQ_NONE || !strlen(sitename)) {
         return (int)(p-(char *)buff);
     }
     for (solq=0;solq<8;solq++) if (nmea_solq[solq]==sol->stat) break;
