@@ -2661,7 +2661,7 @@ static void *httpreqthread(void *arg)
         goto socket_error;
     }
 
-    if(send(socket_fd, buffer, strlen(buffer), 0) < 0){
+    if(send(socket_fd, buffer, strlen(buffer)+1, 0) < 0){
         tracet(2, "send error\n");
         goto socket_error;
     }
@@ -2669,9 +2669,8 @@ static void *httpreqthread(void *arg)
     // 接收和處理HTTP響應
     char *p = httpreq->response;
     httpreq->p = p;
-    if (recv(socket_fd, buffer, 65536 - 1, 0)){
-        p += sprintf(p, "%s", buffer);
-        p += sprintf(p, "\0");
+    if (recv(socket_fd, buffer, 65536 - 1, 0) > 0){
+        p += sprintf(p, "%s%c", buffer, '\0');
         httpreq->q = p;
     }
     
@@ -2695,7 +2694,7 @@ static int writehttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
     if(httpreq->state<=0 || httpreq->state==2){
         //copy http payload from input buffer
         n=n<65535?n:65535-1;
-        strncpy(httpreq->payload, buff, n);
+        strncpy(httpreq->payload, (char *)buff, n);
         httpreq->payload[n] = '\0';
         httpreq->state=1;
 #ifdef WIN32
@@ -2715,7 +2714,7 @@ static int readhttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
     if (httpreq->state<=1) return 0;
     char *p = httpreq->p, *q = httpreq->q;
     int len = q - p > n ? n : q - p;
-    strncpy(buff, httpreq->response, len);
+    strncpy((char *)buff, httpreq->response, len);
     httpreq->p += len;
     if(httpreq->p >= httpreq->q) httpreq->state=0;
     return len;
