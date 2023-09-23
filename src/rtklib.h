@@ -1187,6 +1187,7 @@ typedef struct {        /* RTK control/result type */
     char errbuf[MAXERRMSG]; /* error message buffer */
     prcopt_t opt;       /* processing options */
     int initial_mode;   /* initial positioning mode */
+    int epoch;          /* epoch number */
     double sdave[6][NFREQ];/* single differential average 0:G,1:R,2:E,3:C,4:Q,5:I*/
 } rtk_t;
 
