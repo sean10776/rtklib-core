@@ -57,7 +57,7 @@ extern "C" {
 
 /* constants -----------------------------------------------------------------*/
 
-#define VER_RTKLIB  "1.0.0"             /* library version */
+#define VER_RTKLIB  "1.1.0"             /* library version */
 
 #define PATCH_LEVEL ""               /* patch level */
 
