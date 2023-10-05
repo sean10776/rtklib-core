@@ -2645,12 +2645,14 @@ static int writehttpreq(httpreq_t *httpreq, uint8_t *buff, int n, char *msg)
     if(connect_nb(socket_fd, (struct sockaddr *)&httpreq->server_addr, sizeof(httpreq->server_addr)) < 0){
         tracet(2, "connect error\n");
         sprintf(msg, "connect error");
+        closesocket(socket_fd);
         return 0;
     }
     
     if((ns=send_nb(socket_fd, buff, n)) < 0){
         tracet(2, "send error\n");
         sprintf(msg, "send error");
+        closesocket(socket_fd);
         return 0;
     }
     
