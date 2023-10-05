@@ -59,7 +59,7 @@ extern "C" {
 
 #define VER_RTKLIB  "1.1.0"             /* library version */
 
-#define PATCH_LEVEL ""               /* patch level */
+#define PATCH_LEVEL "phase-filter"      /* patch level */
 
 #define COPYRIGHT_RTKLIB \
             "Copyright (C) 2007-2020 T.Takasu\nAll rights reserved."
