@@ -147,15 +147,24 @@ static void update_glofcn(rtksvr_t *svr)
 /* update observation data ---------------------------------------------------*/
 static void update_obs(rtksvr_t *svr, obs_t *obs, int index, int iobs)
 {
-    int i,n=0,sat,sys;
+    int i,f,n=0,sat,sys;
     
         if (iobs<MAXOBSBUF) {
             for (i=0;i<obs->n;i++) {
-            sat=obs->data[i].sat;
-            sys=satsys(sat,NULL);
-            if (svr->rtk.opt.exsats[sat-1]==1||!(sys&svr->rtk.opt.navsys)) {
-                continue;
-            }
+                sat=obs->data[i].sat;
+                sys=satsys(sat,NULL);
+                if (svr->rtk.opt.exsats[sat-1]==1||!(sys&svr->rtk.opt.navsys)) {
+                    continue;
+                }
+                
+                if (index==0) for(f=0;f<NFREQ;f++) { // phase filter for rover
+                    if (obs->data[i].L[f]==0.0) svr->phasec[sat-1][f]=0;
+                    else if (svr->phasec[sat-1][f] < 7){
+                        obs->data[i].L[f]=0.0;
+                        svr->phasec[sat-1][f]++;
+                    }
+                }
+                
                 svr->obs[index][iobs].data[n]=obs->data[i];
                 svr->obs[index][iobs].data[n++].rcv=index+1;
             }

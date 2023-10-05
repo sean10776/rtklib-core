@@ -1306,7 +1306,7 @@ typedef struct {        /* RTK server type */
     char cmd_reset[MAXRCVCMD]; /* reset command */
     double bl_reset;    /* baseline length to reset (km) */
     lock_t lock;        /* lock flag */
-    
+    uint8_t phasec[MAXSAT][NFREQ]; /* carrier-phase measurement outage counter */
     /** new */
     char sitename[MAXSTRPATH]; /* site name shown on ntou web */
     char EV[50];
