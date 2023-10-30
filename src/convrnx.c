@@ -642,30 +642,35 @@ static void update_halfc(strfile_t *str, obsd_t *obs)
     
     for (i=0;i<NFREQ+NEXOBS;i++) {
         if (obs->L[i]==0.0) continue;
-        
+
+        /* if no list, start list */
         if (!str->halfc[sat-1][i]) {
             if (!add_halfc(str,sat,i,obs->time)) continue;
         }
-        if (obs->LLI[i]&LLI_SLIP) {
+        /* reset list if true cycle slip */
+        if ((obs->LLI[i]&LLI_SLIP)&&!(obs->LLI[i]&(LLI_HALFA|LLI_HALFS))) {
             str->halfc[sat-1][i]->stat=0;
         }
-        if (obs->LLI[i]&LLI_HALFC) { /* halfcyc unknown */
+        if (obs->LLI[i]&LLI_HALFC) { /* halfcyc unresolved */
+            /* if new list, set unresolved start epoch */
             if (str->halfc[sat-1][i]->stat==0) {
                 str->halfc[sat-1][i]->ts=obs->time;
             }
+            /* update unresolved end epoch and set status to active */
             str->halfc[sat-1][i]->te=obs->time;
-            str->halfc[sat-1][i]->stat=1; /* unresolved */
-        }
-        else if (str->halfc[sat-1][i]->stat==1) { /* halfcyc unknown -> known */
+            str->halfc[sat-1][i]->stat=1;
+        } /* else if resolved, update status */
+        else if (str->halfc[sat-1][i]->stat==1) {
             if (obs->LLI[i]&LLI_HALFA) {
-                str->halfc[sat-1][i]->stat=2; /* resolved with added */
+                str->halfc[sat-1][i]->stat=2; /* resolved with add */
             }
             else if (obs->LLI[i]&LLI_HALFS) {
-                str->halfc[sat-1][i]->stat=3; /* resolved with subtracted */
+                str->halfc[sat-1][i]->stat=3; /* resolved with subtract */
             }
             else {
-                str->halfc[sat-1][i]->stat=4; /* resolved with none */
+                str->halfc[sat-1][i]->stat=4; /* resolved with no adjust */
             }
+            /* create new list entry */
             if (!add_halfc(str,sat,i,obs->time)) continue;
         }
     }
@@ -702,14 +707,14 @@ static void resolve_halfc(const strfile_t *str, obsd_t *data, int n)
         sat=data[i].sat;
         
         for (p=str->halfc[sat-1][j];p;p=p->next) {
-            if (p->stat<=1) continue;
+            if (p->stat<=1) continue;  /* unresolved half cycle */
             if (timediff(data[i].time,p->ts)<-DTTOL||
                 timediff(data[i].time,p->te)> DTTOL) continue;
-            
-            if (p->stat==3) {
+
+            if (p->stat==2) {    /* add half cycle */
                 data[i].L[j]+=0.5;
             }
-            else if (p->stat==4) {
+            else if (p->stat==3) {  /* subtract half cycle  */
                 data[i].L[j]-=0.5;
             }
             data[i].LLI[j]&=~LLI_HALFC;
@@ -1042,7 +1047,7 @@ static void convobs(FILE **ofp, rnxopt_t *opt, strfile_t *str, int *n,
     
     n[0]++;
 }
-/* convert navigattion data --------------------------------------------------*/
+/* convert navigation data --------------------------------------------------*/
 static void convnav(FILE **ofp, rnxopt_t *opt, strfile_t *str, int *n)
 {
     gtime_t ts;

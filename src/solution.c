@@ -343,7 +343,7 @@ static int test_solstat(const char *buff)
 /* decode NMEA sentence ------------------------------------------------------*/
 static int decode_nmea(char *buff, sol_t *sol)
 {
-    char *p,*q,*val[MAXFIELD];
+    char *p,*q,*val[MAXFIELD]={0};
     int n=0;
     
     trace(4,"decode_nmea: buff=%s\n",buff);
@@ -1179,7 +1179,7 @@ static int outecef(uint8_t *buff, const char *s, const sol_t *sol,
     const char *sep=opt2sep(opt);
     char *p=(char *)buff;
     
-    trace(3,"outecef:\n");
+    trace(4,"outecef:\n");
     
     p+=sprintf(p,"%s%s%14.4f%s%14.4f%s%14.4f%s%3d%s%3d%s%8.4f%s%8.4f%s%8.4f%s"
                "%8.4f%s%8.4f%s%8.4f%s%6.2f%s%6.1f",
@@ -1207,7 +1207,7 @@ static int outpos(uint8_t *buff, const char *s, const sol_t *sol,
     const char *sep=opt2sep(opt);
     char *p=(char *)buff;
     
-    trace(3,"outpos  :\n");
+    trace(4,"outpos  :\n");
     
     ecef2pos(sol->rr,pos);
     soltocov(sol,P);
@@ -1253,7 +1253,7 @@ static int outenu(uint8_t *buff, const char *s, const sol_t *sol,
     const char *sep=opt2sep(opt);
     char *p=(char *)buff;
     
-    trace(3,"outenu  :\n");
+    trace(4,"outenu  :\n");
     
     for (i=0;i<3;i++) rr[i]=sol->rr[i]-rb[i];
     ecef2pos(rb,pos);
@@ -1430,7 +1430,7 @@ extern int outnmea_gsv(uint8_t *buff, const sol_t *sol, const ssat_t *ssat)
     return (int)(p-(char *)buff);
 }
 /* output solution in the form of ntou tcp get message -------------------------*/
-extern int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, char *CPU, char *CS)
+extern int outntou(uint8_t *buff, const sol_t *sol, char *hostname, char *sitename, char *EV, char *CPU, char *CS)
 {
     gtime_t time;
     double h,ep[6],pos[3],twd[3],dms1[3],dms2[3],dop=1.0;
@@ -1439,7 +1439,7 @@ extern int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, ch
 
     trace(3,"outnmea_gga:\n");
 
-    if (sol->stat<=SOLQ_NONE) {
+    if (sol->stat<=SOLQ_NONE || !strlen(sitename)) {
         return (int)(p-(char *)buff);
     }
     for (solq=0;solq<8;solq++) if (nmea_solq[solq]==sol->stat) break;
@@ -1452,7 +1452,7 @@ extern int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, ch
     deg2dms(fabs(pos[0])*R2D,dms1,7);
     deg2dms(fabs(pos[1])*R2D,dms2,7);
     pos2twd(pos, twd);
-    p+=sprintf(p, "%s", "GET /GpsDataWebService.asmx/InsertGpsSeriesNew?");
+    p+=sprintf(p, "%s", "GET /GpsDataWebService.asmx/InsertGpsSeriesStd?");
     p+=sprintf(p, "%s", "dBName=GPS");
     p+=sprintf(p, "%s%s", "&SiteName=", sitename);
     p+=sprintf(p, "%s%d", "&SatNum=", sol->ns);
@@ -1460,14 +1460,17 @@ extern int outntou(uint8_t *buff, const sol_t *sol, char *sitename, char *EV, ch
     p+=sprintf(p, "%s%f", "&X=", twd[0]);
     p+=sprintf(p, "%s%f", "&Y=", twd[1]);
     p+=sprintf(p, "%s%f", "&Z=", twd[2]);
+    p+=sprintf(p, "%s%f", "&XStd=", sol->qr[0]);
+    p+=sprintf(p, "%s%f", "&YStd=", sol->qr[1]);
+    p+=sprintf(p, "%s%f", "&ZStd=", sol->qr[2]);
     p+=sprintf(p, "%s%1d", "&RMS=", solq);
     p+=sprintf(p, "%s%s", "&EV=", EV);
     p+=sprintf(p, "%s%s", "&CPU=", CPU);
     p+=sprintf(p, "%s%s", "&CS=", CS);
     p+=sprintf(p, "%s", " HTTP/1.1\r\n");
-    p+=sprintf(p, "%s", "Host:");
-    p+=sprintf(p, "%s", "140.121.130.58");
+    p+=sprintf(p, "%s%s", "Host:", hostname);
     p+=sprintf(p, "%s", "\r\nConnection: close \r\n\r\n");
+
     return (int)(p-(char *)buff);
 }
 /* output solution in the old api version form of ntou tcp get message -------------------------*/
@@ -1480,7 +1483,7 @@ extern int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sit
 
     trace(3,"outnmea_gga:\n");
 
-    if (sol->stat<=SOLQ_NONE) {
+    if (sol->stat<=SOLQ_NONE || !strlen(sitename)) {
         return (int)(p-(char *)buff);
     }
     for (solq=0;solq<8;solq++) if (nmea_solq[solq]==sol->stat) break;
@@ -1504,9 +1507,28 @@ extern int outntouold(uint8_t *buff, const sol_t *sol, char *hostname, char *sit
     p+=sprintf(p, "%s%f", "&Z=", twd[2]);
     p+=sprintf(p, "%s%1d", "&RMS=", solq);
     p+=sprintf(p, "%s", " HTTP/1.1\r\n");
-    p+=sprintf(p, "%s", "Host:");
-    p+=sprintf(p, "%s", hostname);
+    p+=sprintf(p, "%s%s", "Host:", hostname);
     p+=sprintf(p, "%s", "\r\nConnection: close \r\n\r\n");
+    return (int)(p-(char *)buff);
+}
+/* output base info */
+extern int outbaseinfo(uint8_t *buff, const rtk_t *rtk, const rtcm_t *rtcm)
+{
+    sta_t ant=rtcm->sta;
+    gtime_t time=rtk->sol.time;
+    double *rb=rtk->rb,ep[6];
+    char *p=(char *)buff,*q,sum;
+    
+    trace(3,"outbaseinfo:\n");
+    time2epoch(time,ep);
+    p+=sprintf(p, "%4d/%02d/%02d %02d:%02d:%05.2f,",
+        (int)ep[0], (int)ep[1], (int)ep[2], (int)ep[3], (int)ep[4], ep[5]);
+    p+=sprintf(p, "%.6f/%.6f/%.6f,",rb[0],rb[1],rb[2]);
+    p+=sprintf(p, "%.6f/%.6f/%.6f,",ant.pos[0],ant.pos[1],ant.pos[2]);
+    p+=sprintf(p, "%s,", ant.deltype==0?"ENU":"XYZ");
+    p+=sprintf(p, "%.6f/%.6f/%.6f,",ant.del[0],ant.del[1],ant.del[2]);
+    p+=sprintf(p, "%.6f\n",ant.hgt);
+    p+=sprintf(p, "%s,%s,%s,%s,%s\n",ant.antdes,ant.antsno,ant.rectype,ant.recver,ant.recsno);
     return (int)(p-(char *)buff);
 }
 /* output processing options ---------------------------------------------------
@@ -1707,7 +1729,7 @@ extern int outsols(uint8_t *buff, const sol_t *sol, const double *rb,
     char s[64];
     uint8_t *p=buff;
     
-    trace(3,"outsols :\n");
+    trace(4,"outsols :\n");
     
     /* suppress output if std is over opt->maxsolstd */
     if (opt->maxsolstd>0.0&&sol_std(sol)>opt->maxsolstd) {
@@ -1823,7 +1845,7 @@ extern void outsol(FILE *fp, const sol_t *sol, const double *rb,
     uint8_t buff[MAXSOLMSG+1];
     int n;
     
-    trace(3,"outsol  :\n");
+    trace(4,"outsol  :\n");
     
     if ((n=outsols(buff,sol,rb,opt))>0) {
         fwrite(buff,n,1,fp);

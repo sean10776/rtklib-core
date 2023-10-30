@@ -202,7 +202,8 @@ const double chisqr[100]={      /* chi-sqr(n) (alpha=0.001) */
     138 ,139 ,140 ,142 ,143 ,144 ,145 ,147 ,148 ,149
 };
 const prcopt_t prcopt_default={ /* defaults processing options */
-    PMODE_KINEMA,0,2,SYS_GPS|SYS_GLO|SYS_GAL,   /* mode,soltype,nf,navsys */
+    PMODE_KINEMA,SOLTYPE_FORWARD, /* mode,soltype */
+    2,SYS_GPS|SYS_GLO|SYS_GAL,  /* nf, navsys */
     15.0*D2R,{{0,0}},           /* elmin,snrmask */
     0,3,3,1,0,1,                /* sateph,modear,glomodear,gpsmodear,bdsmodear,arfilter */
     20,0,4,5,10,20,             /* maxout,minlock,minfixsats,minholdsats,mindropsats,minfix */
@@ -268,7 +269,7 @@ static char *obscodes[]={       /* observation code strings */
     "6E","7D","7P","7Z","8D", "8P","4A","4B","4X",""    /* 60-69 */
 };
 static char codepris[7][MAXFREQ][16]={  /* code priority for each freq-index */
-    /* L1/E1/B1 L2/E5b/B2b   L5/E5a/B2a E6/LEX/B3 E5(a+b)         */
+    /* L1/E1/B1I L2/E5b/B2I L5/E5a/B3I E6/LEX/B2A E5(a+b)         */
     {"CPYWMNSL","CPYWMNDLSX","IQX"     ,""       ,""       ,""}, /* GPS */
     {"CPABX"   ,"CPABX"     ,"IQX"     ,""       ,""       ,""}, /* GLO */
     {"CABXZ"   ,"XIQ"       ,"XIQ"     ,"ABCXZ"  ,"IQX"    ,""}, /* GAL */
@@ -678,8 +679,8 @@ static int code2freq_BDS(uint8_t code, double *freq)
         case '1': *freq=FREQL1;     return 0; /* B1C */
         case '2': *freq=FREQ1_CMP; return 0; /* B1I */
         case '7': *freq=FREQ2_CMP; return 1; /* B2I/B2b */
-        case '5': *freq=FREQL5;     return 2; /* B2a */
-        case '6': *freq=FREQ3_CMP; return 3; /* B3 */
+        case '6': *freq=FREQ3_CMP; return 2; /* B3 */
+        case '5': *freq=FREQL5;     return 3; /* B2a */
         case '8': *freq=FREQE5ab;     return 4; /* B2ab */
     }
     return -1;
@@ -707,7 +708,7 @@ static int code2freq_IRN(uint8_t code, double *freq)
 *            Galileo   E1    E5b   E5a   E6   E5ab
 *            QZSS      L1    L2    L5    L6     - 
 *            SBAS      L1     -    L5     -     -
-*            BDS       B1    B2    B2a   B3   B2ab (B1=B1I,B1C,B2=B2I,B2b)
+*            BDS       B1    B2    B3   B2a   B2ab (B1=B1I,B1C,B2=B2I,B2b)
 *            NavIC     L5     S     -     -     - 
 *-----------------------------------------------------------------------------*/
 extern int code2idx(int sys, uint8_t code)
@@ -3768,7 +3769,8 @@ extern double ionppp(const double *pos, const double *azel, double re,
 /* select iono-free linear combination (L1/L2 or L1/L5) ----------------------*/
 extern int seliflc(int optnf,int sys)
 {
-    return((optnf==2||sys==SYS_GLO||sys==SYS_CMP)?1:2);
+    /* use L1/L5 for Galileo if L5 is enabled */
+    return((optnf==2||sys!=SYS_GAL)?1:2);
 }
 /* troposphere model -----------------------------------------------------------
 * compute tropospheric delay by standard atmosphere and saastamoinen model
@@ -4110,8 +4112,8 @@ extern int rtk_uncompress(const char *file, char *uncfile)
     return stat;
 }
 /* dummy application functions for shared library ----------------------------*/
-#ifdef WIN_DLL
-extern int showmsg(char *format,...) {return 0;}
+#if defined(WIN_DLL) || defined(DLL)
+extern int showmsg(const char *format,...) {return 0;}
 extern void settspan(gtime_t ts, gtime_t te) {}
 extern void settime(gtime_t time) {}
 #endif
