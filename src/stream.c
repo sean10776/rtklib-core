@@ -607,7 +607,7 @@ static int openfile_(file_t *file, gtime_t time, char *msg)
     if ((file->mode&STR_MODE_W)&&!(file->mode&STR_MODE_R)) {
         createdir(file->openpath);
     }
-    if (file->mode&STR_MODE_R) rw="rb"; else rw="ab";
+    if (file->mode&STR_MODE_R) rw="rb"; else rw="wb";
     
     if (!(file->fp=fopen(file->openpath,rw))) {
         sprintf(msg,"file open error: %s",file->openpath);

@@ -264,8 +264,8 @@ static double prange(const obsd_t *obs, const nav_t *nav, int opt)
     
     /* P1-C1,P2-C2 DCB correction */
     if (sys==SYS_GPS||sys==SYS_GLO) {
-        if (obs->code[0]==CODE_L1C) P1+=nav->cbias[sat-1][1]; /* C1->P1 */
-        if (obs->code[1]==CODE_L2C) P2+=nav->cbias[sat-1][2]; /* C2->P2 */
+        if (obs->code[0]==CODE_L1C) P1+=nav->cbias[sat-1][1][1]; /* C1->P1 */
+        if (obs->code[1]==CODE_L2C) P2+=nav->cbias[sat-1][1][2]; /* C2->P2 */
     }
     if (opt==IONOOPT_IFLC) { /* dual-frequency */
         
