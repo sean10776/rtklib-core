@@ -1050,6 +1050,12 @@ static int validobs(int i, int j, int f, int nf, double *y)
     /* check for valid residuals */
     return y[f+i*nf*2]!=0.0&&y[f+j*nf*2]!=0.0;
 }
+/* test valid observation code type ------------------------------------------*/
+static int validcode(int i, int j, int f, const obsd_t *obs)
+{
+    /* check for valid residuals */
+    return obs[i].code[f] == obs[j].code[f];
+}
 /* double-differenced measurement error covariance ---------------------------
 *
 *   nb[n]:  # of sat pairs in group
@@ -1222,6 +1228,7 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                 sysi=rtk->ssat[sat[j]-1].sys;
                 if (!test_sys(sysi,m) || sysi==SYS_SBS) continue;
                 if (!validobs(iu[j],ir[j],f,nf,y)) continue;
+                if (!validcode(iu[j],ir[j],frq,obs)) continue;
                 /* skip sat with slip unless no other valid sat */
                 if (i>=0&&rtk->ssat[sat[j]-1].slip[frq]&LLI_SLIP) continue;
                 if (i<0||azel[1+iu[j]*2]>=azel[1+iu[i]*2]) i=j;
