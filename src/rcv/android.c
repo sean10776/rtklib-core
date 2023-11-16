@@ -377,7 +377,7 @@ static int decode_and(raw_t *raw){
                 buff[j++] = p[i];
             }
         }
-        sec = strtof(buff, &endptr);
+        sec = strtod(buff, &endptr);
         if (week <= 0 || sec <= 0) return 0;
         raw->time = gpst2time(week, sec);
         char *mea = (char*)malloc(raw->len);
