@@ -6,10 +6,13 @@
 #define AND_QZS 4
 #define AND_CMP 5
 #define AND_GAL 6
+#define AND_IRN 7
 
 typedef struct{
-    int prn, sys, code, LLI;
-    double snr, P, L, D;
+    int prn, sys, code, LLI, Pstd, Lstd;
+    double P, L;
+    float D;
+    uint16_t snr;
 }and_mea;
 
 typedef struct
@@ -20,8 +23,12 @@ typedef struct
     int buf_len;
 } and_nav;
 
-static int getLen(uint8_t *buff){char len[6];memcpy(len, buff, 6);return atoi(len);}
-static uint32_t U4(uint8_t *p) {uint32_t u=0;for(int i=0;i<4;i++){u=u<<8|*(p+i);}return u;}
+static int getLen(uint8_t *buff){
+    char len[6]={0},*endptr;
+    strncpy(len, buff, 5);
+    return (int)strtol(len, &endptr, 10);
+}
+static uint32_t U4(const uint8_t *p) {uint32_t u=0;for(int i=0;i<4;i++){u=u<<8|*(p+i);}return u;}
 /* change android gnsstype to rtklib type -----------------------------------*/
 static int sat_sys(int gnssid){
     switch (gnssid) {
@@ -31,36 +38,41 @@ static int sat_sys(int gnssid){
         case AND_CMP: return SYS_CMP;
         case AND_QZS: return SYS_QZS;
         case AND_GLO: return SYS_GLO;
+        case AND_IRN: return SYS_IRN;
+        default: break;
     }
     return 0;
 }
 /* split android raw measurements ------------------------------------------*/
-static void splitMea(char *m, and_mea *mea){
-    char buff[50];
+static void splitMea(const char *m, and_mea *mea){
+    char buff[50], *endptr;
+    memset(mea, 0, sizeof(and_mea));
     for(int i=0, idx=0, dataIdx=0; m[i]; i++){
         if(m[i] == ',' || m[i] == '\n'){
             switch (dataIdx)
             {
-            case 0: mea->prn=atoi(buff); break;
-            case 1: mea->sys=sat_sys(atoi(buff)); break;
-            case 2: mea->snr=(uint16_t)(atof(buff) / SNR_UNIT + 0.5); break;
-            case 3: mea->P=atof(buff); break;
-            case 4: mea->L=atof(buff); break;
-            case 5: mea->D=atof(buff); break;
-            case 6: mea->code=(uint8_t)atoi(buff); break;
-            case 7: mea->LLI=(uint8_t)atoi(buff); break;
+                case 0: mea->prn=strtol(buff, &endptr, 10); break;
+                case 1: mea->sys=sat_sys(strtol(buff, &endptr, 10)); break;
+                case 2: mea->snr=(uint16_t)(strtold(buff, &endptr) / SNR_UNIT + 0.5); break;
+                case 3: mea->P=strtod(buff, &endptr); break;
+                case 4: mea->L=strtod(buff, &endptr); break;
+                case 5: mea->D=strtof(buff, &endptr); break;
+                case 6: mea->Pstd=(uint8_t)strtol(buff, &endptr, 10); break;
+                case 7: mea->Lstd=(uint8_t)strtol(buff, &endptr, 10); break;
+                case 8: mea->code=(uint8_t)strtol(buff, &endptr, 10); break;
+                case 9: mea->LLI=(uint8_t)strtol(buff, &endptr, 10); break;
+                default:break;
             }
             idx = 0; dataIdx++;
             memset(buff, 0, sizeof(buff));
         }else{
             buff[idx++] = m[i];
         }
-
     }
 }
 /* decode android raw measurements -----------------------------------------*/
 static int decodeMeasurements(raw_t *raw, char *meas){
-    int n = 0, cpc = 0;
+    int n = 0;
     char* pch = strtok(meas, "\n");
     and_mea mea;
     do{
@@ -91,40 +103,42 @@ static int decodeMeasurements(raw_t *raw, char *meas){
             for(int j = 0; j < NFREQ+NEXOBS;j++){
                 raw->obs.data[n].L[j]=raw->obs.data[n].P[j]=0.0;
                 raw->obs.data[n].Lstd[j]=raw->obs.data[n].Pstd[j]=0;
-                raw->obs.data[n].D[j]=0.0;
+                raw->obs.data[n].D[j]=0.0f;
                 raw->obs.data[n].SNR[j]=raw->obs.data[n].LLI[j]=0;
                 raw->obs.data[n].code[j]=CODE_NONE;
             }
             n++;
         }
-        raw->obs.data[i].P[idx]=mea.P; 
-        raw->obs.data[i].L[idx]=mea.L; if(mea.L != 0)cpc++;
-        raw->obs.data[i].D[idx]=mea.D; 
+        raw->obs.data[i].P[idx]=mea.P;
+        raw->obs.data[i].L[idx]=mea.L;
+        raw->obs.data[i].D[idx]=mea.D;
         raw->obs.data[i].SNR[idx]=mea.snr;
         raw->obs.data[i].LLI[idx]=mea.LLI;
         raw->obs.data[i].code[idx]=code;
+        raw->obs.data[i].Pstd[idx]=mea.Pstd;
+        raw->obs.data[i].Lstd[idx]=mea.Lstd;
         if(mea.L != 0.0) raw->lockflag[sat-1][idx]=0;
-        trace(3, "decode_and: sys=%d svid=%d idx=%d P = %.3f L = %.3f D = %.3f\n",
-              sys, prn, idx, mea.P, mea.L, mea.D);
+        trace(4, "decode_and: sys=%d svid=%d idx=%d P = %.3f L = %.3f D = %.3f Pstd = %d Lstd = %d\n",
+              sys, prn, idx, mea.P, mea.L, mea.D, mea.Pstd, mea.Lstd);
     } while ((pch = strtok(NULL , "\n")) && n < MAXOBS);
     raw->obs.n = n;
-    return 1;
+    return raw->obs.n;
 }
 /* split android raw measurements ------------------------------------------*/
-static int splitNav(char *raw, and_nav *nav){
-    char buff[5] = "";
+static int splitNav(const char *raw, and_nav *nav){
+    char buff[5] = "", *p;
     int dataSize = 0;
     memset(nav->buff, 0, 50);
     for(int i = 0, idx = 0; raw[i]; i++){
         if(raw[i] == ',' || raw[i] == '\r' || raw[i] == '\n'){
             switch (dataSize)
             {
-            case 0: nav->prn=atoi(buff); break;
-            case 1: nav->sys=sat_sys(atoi(buff)>>8); break;
-            case 2: nav->status=(atoi(buff) != 0); break;
-            case 3: nav->frameId=atoi(buff); break;
-            case 4: nav->subfmId=atoi(buff); break;
-            default:nav->buff[dataSize-5] = (uint8_t) atoi(buff);
+                case 0: nav->prn=strtol(buff, &p, 10); break;
+                case 1: nav->sys=sat_sys(strtol(buff, &p, 10)>>8); break;
+                case 2: nav->status=(strtol(buff, &p, 10) != 0); break;
+                case 3: nav->frameId=strtol(buff, &p, 10); break;
+                case 4: nav->subfmId=strtol(buff, &p, 10); break;
+                default:nav->buff[dataSize-5] = (uint8_t) strtol(buff, &p, 10);
             }
             idx = 0; dataSize++;
             memset(buff, 0, sizeof(buff));
@@ -140,9 +154,9 @@ static int splitNav(char *raw, and_nav *nav){
 static void adj_utcweek(gtime_t time, double *utc)
 {
     int week;
-    
+
     time2gpst(time,&week);
-    utc[3]+=week/256*256;
+    utc[3]+=(double)week/256*256;
     if      (utc[3]<week-127) utc[3]+=256.0;
     else if (utc[3]>week+127) utc[3]-=256.0;
     utc[5]+=utc[3]/256*256;
@@ -153,9 +167,9 @@ static void adj_utcweek(gtime_t time, double *utc)
 static int decode_eph(raw_t *raw, int sat)
 {
     eph_t eph={0};
-    
+
     if (!decode_frame(raw->subfrm[sat-1],&eph,NULL,NULL,NULL)) return 0;
-    
+
     if (!strstr(raw->opt,"-EPHALL")) {
         if (eph.iode==raw->nav.eph[sat-1].iode&&
             eph.iodc==raw->nav.eph[sat-1].iodc&&
@@ -173,9 +187,9 @@ static int decode_ionutc(raw_t *raw, int sat)
 {
     double ion[8],utc[8];
     int sys=satsys(sat,NULL);
-    
+
     if (!decode_frame(raw->subfrm[sat-1],NULL,NULL,ion,utc)) return 0;
-    
+
     adj_utcweek(raw->time,utc);
     if (sys==SYS_QZS) {
         matcpy(raw->nav.ion_qzs,ion,8,1);
@@ -219,7 +233,8 @@ static int decode_cnav(raw_t *raw, and_nav *nav){
     eph_t eph={0};
     double ion[8],utc[8];
     uint8_t *p=nav->buff,buff[38]={0};
-    int i,id,pgn,prn,sat;
+    int i,id,prn,sat;
+    uint32_t pgn;
     if(nav->buf_len != 40){
         trace(-2, "len error");
         return -1;
@@ -232,7 +247,7 @@ static int decode_cnav(raw_t *raw, and_nav *nav){
     prn=nav->prn;
     if(6 <= prn && prn <= 58){ /* IGSO/MEO */
         memcpy(raw->subfrm[sat-1]+(id-1)*38,buff,38);
-        
+
         if (id==3) {
             if (!decode_bds_d1(raw->subfrm[sat-1],&eph,NULL,NULL)) return 0;
         }
@@ -246,7 +261,7 @@ static int decode_cnav(raw_t *raw, and_nav *nav){
     }
     else { /* GEO */
         pgn=getbitu(buff,42,4); /* page numuber */
-        
+
         if (id==1&&1<=pgn&&pgn<=10) {
             memcpy(raw->subfrm[sat-1]+(pgn-1)*38,buff,38);
             if (pgn!=10) return 0;
@@ -277,7 +292,7 @@ static int decode_gnav(raw_t *raw, and_nav *nav){
     uint8_t *p=nav->buff, buff[11],*fid;
     prn=nav->prn;
     sat=nav->sat;
-    
+
     if (nav->buf_len<11) {
         trace(2,"gnav length error: len=%d\n",raw->len);
         return -1;
@@ -303,7 +318,7 @@ static int decode_gnav(raw_t *raw, and_nav *nav){
         *fid = nav->frameId;
     }
     memcpy(raw->subfrm[sat-1]+(m-1)*10,buff,10);
-    
+
     if (m==4) {
         /* decode GLONASS ephemeris strings */
         geph.tof=raw->time;
@@ -311,7 +326,7 @@ static int decode_gnav(raw_t *raw, and_nav *nav){
             return 0;
         }
         geph.frq=nav->buff[3]-7;
-        
+
         if (!strstr(raw->opt,"-EPHALL")) {
             if (geph.iode==raw->nav.geph[prn-1].iode) return 0;
         }
@@ -325,57 +340,56 @@ static int decode_gnav(raw_t *raw, and_nav *nav){
         matcpy(raw->nav.utc_glo,utc_glo,8,1);
         return 9;
     }
-    return 0; 
+    return 0;
 }
 /* decode SBAS navigation data -----------------------------------------------*/
 static int decode_snav(raw_t *raw, and_nav *nav){
-    return 1;    
+    return 1;
 }
 /* decode android navigation message ---------------------------------------*/
 static int decodeNavigation(raw_t *raw, char *navs){
     and_nav nav;
     splitNav(navs, &nav);
     // showNav(nav); //delete
-    int sys = nav.sys, sat;
-    if(!(sat=satno(sys, nav.prn))){
-        if (sys==SYS_GLO&&nav.prn==255) {
-            return 0; /* suppress warning for unknown glo satellite */
-        }
-        trace(2,"sat number error: sys=%2d prn=%2d\n",sys, nav.prn);
-        return 0;
-    }
-    
+    int sys = nav.sys;
+
     switch (sys) {
+        case SYS_QZS:
         case SYS_GPS: return decode_nav (raw, &nav);
-        case SYS_QZS: return decode_nav (raw, &nav);
         case SYS_GAL: return decode_enav(raw, &nav);
         case SYS_CMP: return decode_cnav(raw, &nav);
         case SYS_GLO: return decode_gnav(raw, &nav);
         case SYS_SBS: return decode_snav(raw, &nav);
+        default: break;
     }
     return 0;
 }
 /* decode android message --------------------------------------------------*/
 static int decode_and(raw_t *raw){
-    char *p = raw->buff+6, buff[20] = {0};
+    char *p = raw->buff+6, buff[20] = {0}, *endptr;
     if(p[0] == '?'){ //raw measurement
-        int i,j, week;double sec;
-        for(i = 1, j = 0; p[i] != '#';i++){
+        int i,j, week=0; double sec;
+        for(i = 1, j = 0; p[i] != '#' && j < sizeof(buff);i++){
             if(p[i] == '@'){
-                week = atoi(buff);
+                week = strtol(buff, &endptr, 10);
                 memset(buff, 0, 20);
                 j = 0;
-                if(week <= 0)return 0;
             } else{
                 buff[j++] = p[i];
             }
         }
-        sec = atof(buff);
+        sec = strtod(buff, &endptr);
+        if (week <= 0 || sec <= 0) return 0;
         raw->time = gpst2time(week, sec);
-        char *mea = (char*)calloc( raw->len-6-i+1, sizeof(char));
-        memcpy(mea, p+i+1, raw->len-6-i);
+        char *mea = (char*)malloc(raw->len);
+        memcpy(mea, p+i+1, raw->len-7-i);
+        mea[raw->len-7-i] = '\0';
         // showmsg("input android fulldata:\n%s", mea);
-        return decodeMeasurements(raw, mea);
+        if(!decodeMeasurements(raw, mea)){
+            trace(2, "android no observation\n");
+        }
+        free(mea);
+        return 1;
     }else if(p[0] =='/'){ //navigation message
         char *navs = (char*)calloc( raw->len-6+1, sizeof(char));
         memcpy(navs, p+1, raw->len-6-1);
@@ -398,8 +412,7 @@ static int sync_and(uint8_t *raw, uint8_t data){
 *                  9: input ion/utc parameter)
 *-----------------------------------------------------------------------------*/
 extern int input_and(raw_t *raw, uint8_t data){
-    int status = 0, i, j;
-    char c = (unsigned char)data;
+    int status = 0;
     if(raw->nbyte == 0) {
         if (sync_and(raw->buff,(uint8_t)data))
             raw->nbyte++;
@@ -407,7 +420,8 @@ extern int input_and(raw_t *raw, uint8_t data){
     }
     raw->buff[raw->nbyte++] = data;
     if(raw->nbyte == 7){
-        raw->len = getLen(raw->buff+1);
+        if (data != '?') raw->nbyte = 0;
+        else raw->len = getLen(raw->buff+1);
     }
     if(raw->nbyte<7 || raw->nbyte < raw->len)return 0;
     raw->nbyte = 0;
@@ -421,9 +435,9 @@ extern int input_and(raw_t *raw, uint8_t data){
 *-----------------------------------------------------------------------------*/
 extern int input_andf(raw_t *raw, FILE *fp){
     int i,data;
-    
+
     trace(4,"input_andf:\n");
-    
+
     /* synchronize frame */
     if (raw->nbyte==0) {
         for (i=0;;i++) {

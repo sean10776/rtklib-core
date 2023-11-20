@@ -4,7 +4,7 @@
 
 void android_test(void)
 {
-    char *file = "./data/android_raw.txt";
+    char *file = "../data/android_raw.txt";
     printf("Test input raw\n");
     raw_t raw;
     init_raw(&raw, STRFMT_ANDROID);
