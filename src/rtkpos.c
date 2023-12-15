@@ -326,7 +326,7 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
 {
     ssat_t *ssat;
     double tow;
-    char buff[MAXSOLMSG+1],id[32];
+    char buff[MAXSOLMSG+1],id[32],code[10],rcode[10];
     int i,j,k,n,week,nfreq,nf=NF(&rtk->opt);
     
     if (statlevel<=0||!fp_stat||!rtk->sol.stat) return;
@@ -353,11 +353,13 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
         satno2id(i+1,id);
         for (j=0;j<nfreq;j++) {
             k=IB(i+1,j,&rtk->opt);
-            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%d,%.0f,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
+            strcpy(code, code2obs(ssat->code_rover[j]));
+            strcpy(rcode, code2obs(ssat->code_base[j]));
+            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%d,%.0f,%.0f,%s,%s,%d,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
                     week,tow,id,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,
-                    ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->snr_rover[j]*SNR_UNIT,
-                    ssat->fix[j],ssat->slip[j]&3,ssat->lock[j],ssat->outc[j],
-                    ssat->slipc[j],ssat->rejc[j],rtk->x[k],
+                    ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->snr_rover[j]*SNR_UNIT,ssat->snr_base[j]*SNR_UNIT,
+                    code,rcode,ssat->fix[j],ssat->slip[j]&3,ssat->lock[j],ssat->outc[j],
+                    ssat->slipc[j],ssat->ref[j],ssat->rejc[j],rtk->x[k],
                     rtk->P[k+k*rtk->nx],ssat->icbias[j]);
         }
     }
@@ -1057,12 +1059,6 @@ static int validobs(int i, int j, int f, int nf, double *y)
     /* check for valid residuals */
     return y[f+i*nf*2]!=0.0&&y[f+j*nf*2]!=0.0;
 }
-/* test valid observation code type ------------------------------------------*/
-static int validcode(int i, int j, int f, const obsd_t *obs)
-{
-    /* check for valid residuals */
-    return obs[i].code[f] == obs[j].code[f];
-}
 /* double-differenced measurement error covariance ---------------------------
 *
 *   nb[n]:  # of sat pairs in group
@@ -1195,10 +1191,11 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
     int i,j,k,m,f,nv=0,nb[NFREQ*4*2+2]={0},b=0,sysi,sysj,nf=NF(opt);
     int ii,jj,frq,code,hiqual;
     
-    trace(3,"ddres   : dt=%.4f ns=%d\n",dt,ns);
+    trace(1,"ddres   : dt=%.4f ns=%d\n",dt,ns);
 
     /* bl=distance from base to rover, dr=x,y,z components */
     bl=baseline(x,rtk->rb,dr);
+    trace(1,"baseline+ %.4f\n",bl);
     /* translate ecef pos to geodetic pos */
     ecef2pos(x,posu); ecef2pos(rtk->rb,posr);
     
@@ -1233,7 +1230,6 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                 sysi=rtk->ssat[sat[j]-1].sys;
                 if (!test_sys(sysi,m) || sysi==SYS_SBS) continue;
                 if (!validobs(iu[j],ir[j],f,nf,y)) continue;
-                if (!validcode(iu[j],ir[j],frq,obs)) continue;
                 /* skip sat with slip unless no other valid sat */
                 if (i>=0&&rtk->ssat[sat[j]-1].slip[frq]&LLI_SLIP) continue;
                 if (i<0||azel[1+iu[j]*2]>=azel[1+iu[i]*2]) i=j;
@@ -1292,10 +1288,12 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                           IB=look up index by sat&freq */
                     if (opt->ionoopt!=IONOOPT_IFLC) {
                         /* phase-bias states are single-differenced so need to difference them */
+                        trace(1,"v=%.4f (cy),ambi m=%d f=%d sat1=%.4f  sat2=%.4f\n",v[nv]*freqi/CLIGHT,m,f,x[ii],x[jj]);
                         v[nv]-=CLIGHT/freqi*x[ii]-CLIGHT/freqj*x[jj];
+                        trace(1,"v=%.4f NN= %.4f freqi=%.4f  freqj=%.4f\n",v[nv],x[ii]-x[jj],freqi,freqj);
                         if (H) {
-                        Hi[ii]= CLIGHT/freqi;
-                        Hi[jj]=-CLIGHT/freqj;
+                            Hi[ii]= CLIGHT/freqi;
+                            Hi[jj]=-CLIGHT/freqj;
                         }
                     }
                     else {
@@ -1334,7 +1332,7 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                 
                 /* save residuals */
                 if (code) rtk->ssat[sat[j]-1].resp[frq]=v[nv];  /* pseudorange */
-                else      rtk->ssat[sat[j]-1].resc[frq]=v[nv];  /* carrier phase */
+                else      rtk->ssat[sat[j]-1].resc[frq]=v[nv]/CLIGHT*freqj;  /* carrier phase */
 
                 /* open up outlier threshold if one of the phase biases was just initialized */
                 threshadj=(P[ii+rtk->nx*ii]==SQR(rtk->opt.std[0]))||
@@ -1892,12 +1890,13 @@ static int valpos(rtk_t *rtk, const double *v, const double *R, const int *vflg,
     
     /* post-fit residual test */
     for (i=0;i<nv;i++) {
-        if (v[i]*v[i]<=fact*R[i+i*nv]) continue;
         sat1=(vflg[i]>>16)&0xFF;
         sat2=(vflg[i]>> 8)&0xFF;
         type=(vflg[i]>> 4)&0xF;
         freq=vflg[i]&0xF;
         stype=type==0?"L":(type==1?"P":"C");
+        rtk->ssat[sat1-1].ref[freq]|=(1<<type); /* set ref type */
+        if (v[i]*v[i]<=fact*R[i+i*nv]) continue;
         errmsg(rtk,"large residual (sat=%2d-%2d %s%d v=%6.3f sig=%.3f)\n",
               sat1,sat2,stype,freq+1,v[i],SQRT(R[i+i*nv]));
     }
@@ -1941,6 +1940,9 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
             rtk->ssat[i].vsat[j]=0;                                               /* valid satellite */
             rtk->ssat[i].snr_rover[j]=0;
             rtk->ssat[i].snr_base[j] =0;
+            rtk->ssat[i].ref[j]=0;
+            rtk->ssat[i].code_rover[j]=0;
+            rtk->ssat[i].code_base[j]=0;
         }
     }
     /* compute satellite positions, velocities and clocks for base and rover */
@@ -1978,7 +1980,9 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
         
         /* snr of base and rover receiver */
         rtk->ssat[sat[i]-1].snr_rover[j]=obs[iu[i]].SNR[j];
-        rtk->ssat[sat[i]-1].snr_base[j] =obs[ir[i]].SNR[j]; 
+        rtk->ssat[sat[i]-1].snr_base[j] =obs[ir[i]].SNR[j];
+        rtk->ssat[sat[i]-1].code_rover[j]=obs[iu[i]].code[j];
+        rtk->ssat[sat[i]-1].code_base[j] =obs[ir[i]].code[j];
     }
     
     /* initialize Pp,xa to zero, xp to rtk->x */

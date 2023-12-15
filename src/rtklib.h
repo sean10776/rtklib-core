@@ -1157,6 +1157,9 @@ typedef struct {        /* satellite status type */
     double phw;         /* phase windup (cycle) */
     gtime_t pt[2][NFREQ]; /* previous carrier-phase time */
     double  ph[2][NFREQ]; /* previous carrier-phase observable (cycle) */
+    uint8_t ref[NFREQ];   /* reference satellite flag */
+    uint8_t code_rover[NFREQ];  /* rover obs code (CODE_)*/
+    uint8_t code_base[NFREQ];   /* base obs code (CODE_) */
 } ssat_t;
 
 typedef struct {        /* ambiguity control type */

@@ -679,8 +679,8 @@ static int code2freq_BDS(uint8_t code, double *freq)
         case '1': *freq=FREQL1;     return 0; /* B1C */
         case '2': *freq=FREQ1_CMP; return 0; /* B1I */
         case '7': *freq=FREQ2_CMP; return 1; /* B2I/B2b */
-        case '6': *freq=FREQ3_CMP; return 2; /* B3 */
-        case '5': *freq=FREQL5;     return 3; /* B2a */
+        case '6': *freq=FREQ3_CMP; return 3; /* B3 */
+        case '5': *freq=FREQL5;     return 2; /* B2a */
         case '8': *freq=FREQE5ab;     return 4; /* B2ab */
     }
     return -1;

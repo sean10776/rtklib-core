@@ -46,6 +46,7 @@ static int sat_sys(int gnssid){
 /* split android raw measurements ------------------------------------------*/
 static void splitMea(const char *m, and_mea *mea){
     char buff[50], *endptr;
+    memset(mea, 0, sizeof(and_mea));
     for(int i=0, idx=0, dataIdx=0; m[i]; i++){
         if(m[i] == ',' || m[i] == '\n'){
             switch (dataIdx)
@@ -55,7 +56,7 @@ static void splitMea(const char *m, and_mea *mea){
                 case 2: mea->snr=(uint16_t)(strtold(buff, &endptr) / SNR_UNIT + 0.5); break;
                 case 3: mea->P=strtod(buff, &endptr); break;
                 case 4: mea->L=strtod(buff, &endptr); break;
-                case 5: mea->D=strtof(buff, &endptr); break;
+                case 5: mea->D=strtod(buff, &endptr); break;
                 case 6: mea->Pstd=(uint8_t)strtol(buff, &endptr, 10); break;
                 case 7: mea->Lstd=(uint8_t)strtol(buff, &endptr, 10); break;
                 case 8: mea->code=(uint8_t)strtol(buff, &endptr, 10); break;
@@ -377,7 +378,7 @@ static int decode_and(raw_t *raw){
                 buff[j++] = p[i];
             }
         }
-        sec = strtof(buff, &endptr);
+        sec = strtod(buff, &endptr);
         if (week <= 0 || sec <= 0) return 0;
         raw->time = gpst2time(week, sec);
         char *mea = (char*)malloc(raw->len);
