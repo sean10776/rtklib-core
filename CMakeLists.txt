@@ -28,10 +28,6 @@ elseif(CYGWIN)
     add_compile_options(-g)
 endif()
 
-if(BUILD_TESTS)
-    add_compile_definitions(NFREQ=3 NEXOBS=3 ENAGLO ENAGAL ENACMP TRACE)
-endif()
-
 add_library(${PROJECT_NAME} STATIC ${RTKLIB_SRC} ${RTKLIB_SRC_RCV})
 
 set(RTKLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
