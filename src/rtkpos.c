@@ -326,7 +326,7 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
 {
     ssat_t *ssat;
     double tow;
-    char buff[MAXSOLMSG+1],id[32],rid[32],code[10],rcode[10];
+    char buff[MAXSOLMSG+1],id[32],code[10],rcode[10];
     int i,j,k,n,week,nfreq,nf=NF(&rtk->opt);
     
     if (statlevel<=0||!fp_stat||!rtk->sol.stat) return;
@@ -355,8 +355,8 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
             k=IB(i+1,j,&rtk->opt);
             strcpy(code, code2obs(ssat->code_rover[j]));
             strcpy(rcode, code2obs(ssat->code_base[j]));
-            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%.4f,%.4f,%d,%.0f,%.0f,%s,%s,%d,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
-                    week,tow,id,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,ssat->sdrp[j],ssat->sdrc[j],
+            fprintf(fp_stat,"$SAT,%d,%.3f,%s,%d,%.1f,%.1f,%.4f,%.4f,%d,%.0f,%.0f,%s,%s,%d,%d,%d,%d,%d,%d,%d,%.2f,%.6f,%.5f\n",
+                    week,tow,id,j+1,ssat->azel[0]*R2D,ssat->azel[1]*R2D,
                     ssat->resp[j],ssat->resc[j],ssat->vsat[j],ssat->snr_rover[j]*SNR_UNIT,ssat->snr_base[j]*SNR_UNIT,
                     code,rcode,ssat->fix[j],ssat->slip[j]&3,ssat->lock[j],ssat->outc[j],
                     ssat->slipc[j],ssat->ref[j],ssat->rejc[j],rtk->x[k],
@@ -496,10 +496,10 @@ static void udpos(rtk_t *rtk, double tt)
     /* initialize position for first epoch */
     if (norm(rtk->x,3)<=0.0) {
         trace(3,"rr_init=");tracemat(3,rtk->sol.rr,1,6,15,6);
-        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
+        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[0]),i);
         if (rtk->opt.dynamics) {
-            for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],VAR_VEL,i);
-            for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
+            for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[1]),i);
+            for (i=6;i<9;i++) initx(rtk,1E-6,SQR(rtk->opt.initprn[2]),i);
         }
     }
     /* static mode */
@@ -507,18 +507,18 @@ static void udpos(rtk_t *rtk, double tt)
     
     /* kinmatic mode without dynamics */
     if (!rtk->opt.dynamics) {
-        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
+        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[0]),i);
         return;
     }
     /* check variance of estimated position */
     for (i=0;i<3;i++) var+=rtk->P[i+i*rtk->nx];
     var/=3.0;
     
-    if (var>VAR_POS) {
+    if (var>SQR(rtk->opt.initprn[0])) {
         /* reset position with large variance */
-        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
-        for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],VAR_VEL,i);
-        for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
+        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[0]),i);
+        for (i=3;i<6;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[1]),i);
+        for (i=6;i<9;i++) initx(rtk,1E-6,SQR(rtk->opt.initprn[2]),i);
         trace(2,"reset rtk position due to large variance: var=%.3f\n",var);
         return;
     }
@@ -1191,10 +1191,11 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
     int i,j,k,m,f,nv=0,nb[NFREQ*4*2+2]={0},b=0,sysi,sysj,nf=NF(opt);
     int ii,jj,frq,code,hiqual;
     
-    trace(3,"ddres   : dt=%.4f ns=%d\n",dt,ns);
+    trace(1,"ddres   : dt=%.4f ns=%d\n",dt,ns);
 
     /* bl=distance from base to rover, dr=x,y,z components */
     bl=baseline(x,rtk->rb,dr);
+    trace(1,"baseline+ %.4f\n",bl);
     /* translate ecef pos to geodetic pos */
     ecef2pos(x,posu); ecef2pos(rtk->rb,posr);
     
@@ -1287,7 +1288,9 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                           IB=look up index by sat&freq */
                     if (opt->ionoopt!=IONOOPT_IFLC) {
                         /* phase-bias states are single-differenced so need to difference them */
+                        trace(1,"v=%.4f (cy),ambi m=%d f=%d sat1=%.4f  sat2=%.4f\n",v[nv]*freqi/CLIGHT,m,f,x[ii],x[jj]);
                         v[nv]-=CLIGHT/freqi*x[ii]-CLIGHT/freqj*x[jj];
+                        trace(1,"v=%.4f NN= %.4f freqi=%.4f  freqj=%.4f\n",v[nv],x[ii]-x[jj],freqi,freqj);
                         if (H) {
                             Hi[ii]= CLIGHT/freqi;
                             Hi[jj]=-CLIGHT/freqj;
@@ -1971,7 +1974,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
             rtk->ssat[i].snr_base[j] =0;
             rtk->ssat[i].ref[j]=0;
             rtk->ssat[i].code_rover[j]=0;
-            rtk->ssat[i].code_base[j] =0;
+            rtk->ssat[i].code_base[j]=0;
         }
     }
     /* compute satellite positions, velocities and clocks for base and rover */
@@ -2009,10 +2012,9 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
         
         /* snr of base and rover receiver */
         rtk->ssat[sat[i]-1].snr_rover[j]=obs[iu[i]].SNR[j];
-        rtk->ssat[sat[i]-1].snr_base[j] =obs[ir[i]].SNR[j]; 
-        /* obs code  */
-        rtk->ssat[sat[i]-1].code_rover[j] = obs[iu[i]].code[j];
-        rtk->ssat[sat[i]-1].code_base[j]  = obs[ir[i]].code[j];
+        rtk->ssat[sat[i]-1].snr_base[j] =obs[ir[i]].SNR[j];
+        rtk->ssat[sat[i]-1].code_rover[j]=obs[iu[i]].code[j];
+        rtk->ssat[sat[i]-1].code_base[j] =obs[ir[i]].code[j];
     }
     
     /* initialize Pp,xa to zero, xp to rtk->x */
@@ -2345,10 +2347,10 @@ extern int rtkpos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     /* return to static start if long delay without rover data */
     if (fabs(rtk->tt)>300&&rtk->initial_mode==PMODE_STATIC_START) {
         rtk->opt.mode=PMODE_STATIC_START;
-        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],VAR_POS,i);
+        for (i=0;i<3;i++) initx(rtk,rtk->sol.rr[i],SQR(rtk->opt.initprn[0]),i);
         if (rtk->opt.dynamics) {
-            for (i=3;i<6;i++) initx(rtk,1E-6,VAR_VEL,i);
-            for (i=6;i<9;i++) initx(rtk,1E-6,VAR_ACC,i);
+            for (i=3;i<6;i++) initx(rtk,1E-6,SQR(rtk->opt.initprn[1]),i);
+            for (i=6;i<9;i++) initx(rtk,1E-6,SQR(rtk->opt.initprn[2]),i);
         }
         trace(3,"No data for > 5 min: switch back to static mode:\n");
     }

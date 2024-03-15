@@ -56,7 +56,7 @@ static void splitMea(const char *m, and_mea *mea){
                 case 2: mea->snr=(uint16_t)(strtold(buff, &endptr) / SNR_UNIT + 0.5); break;
                 case 3: mea->P=strtod(buff, &endptr); break;
                 case 4: mea->L=strtod(buff, &endptr); break;
-                case 5: mea->D=strtof(buff, &endptr); break;
+                case 5: mea->D=strtod(buff, &endptr); break;
                 case 6: mea->Pstd=(uint8_t)strtol(buff, &endptr, 10); break;
                 case 7: mea->Lstd=(uint8_t)strtol(buff, &endptr, 10); break;
                 case 8: mea->code=(uint8_t)strtol(buff, &endptr, 10); break;

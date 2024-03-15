@@ -8,7 +8,7 @@ set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 message(${PROJECT_NAME} " " ${RTKLIB_VERSION})
 
-option(BUILD_TESTS "Build tests" ON)
+option(BUILD_TESTS "Build tests" OFF)
 
 aux_source_directory(${SRC_DIR} RTKLIB_SRC)
 aux_source_directory(${SRC_DIR}/rcv RTKLIB_SRC_RCV)
@@ -28,10 +28,6 @@ elseif(CYGWIN)
     add_compile_options(-g)
 endif()
 
-if(BUILD_TESTS)
-    add_compile_definitions(NFREQ=3 NEXOBS=3 ENAGLO ENAGAL ENACMP TRACE)
-endif()
-
 add_library(${PROJECT_NAME} STATIC ${RTKLIB_SRC} ${RTKLIB_SRC_RCV})
 
 set(RTKLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -39,7 +35,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${RTKLIB_INCLUDE_DIR})
 
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} wsock32 winmm)
-elseif(UNIX)
+elseif(UNIX AND !ANDROID)
     target_link_libraries(${PROJECT_NAME} m rt pthread)
 endif()
 

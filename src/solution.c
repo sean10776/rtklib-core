@@ -1452,7 +1452,7 @@ extern int outntou(uint8_t *buff, const sol_t *sol, char *hostname, char *sitena
     deg2dms(fabs(pos[0])*R2D,dms1,7);
     deg2dms(fabs(pos[1])*R2D,dms2,7);
     pos2twd(pos, twd);
-    p+=sprintf(p, "%s", "GET /GpsDataWebService.asmx/InsertGpsSeriesNew?");
+    p+=sprintf(p, "%s", "GET /GpsDataWebService.asmx/InsertGpsSeriesStd?");
     p+=sprintf(p, "%s", "dBName=GPS");
     p+=sprintf(p, "%s%s", "&SiteName=", sitename);
     p+=sprintf(p, "%s%d", "&SatNum=", sol->ns);
@@ -1460,6 +1460,9 @@ extern int outntou(uint8_t *buff, const sol_t *sol, char *hostname, char *sitena
     p+=sprintf(p, "%s%f", "&X=", twd[0]);
     p+=sprintf(p, "%s%f", "&Y=", twd[1]);
     p+=sprintf(p, "%s%f", "&Z=", twd[2]);
+    p+=sprintf(p, "%s%f", "&XStd=", sol->qr[0]);
+    p+=sprintf(p, "%s%f", "&YStd=", sol->qr[1]);
+    p+=sprintf(p, "%s%f", "&ZStd=", sol->qr[2]);
     p+=sprintf(p, "%s%1d", "&RMS=", solq);
     p+=sprintf(p, "%s%s", "&EV=", EV);
     p+=sprintf(p, "%s%s", "&CPU=", CPU);
