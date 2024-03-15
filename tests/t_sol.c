@@ -42,5 +42,11 @@ void ntou_api_test(void){
 }
 
 void main(int argc, char**argv){
-    ntou_api_test();
+    int sys, prn;
+    int prns[] = {101,118,122,123,132,134,135};
+    for(int i=0;i<sizeof(prns)/sizeof(prns[0]);i++){
+        sys = satsys(prns[i], &prn);
+        printf("%d => %d %d\n", prns[i], sys, prn);
+    }
+    // ntou_api_test();
 }

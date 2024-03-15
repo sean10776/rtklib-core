@@ -8,7 +8,7 @@ set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 message(${PROJECT_NAME} " " ${RTKLIB_VERSION})
 
-option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_TESTS "Build tests" ON)
 
 aux_source_directory(${SRC_DIR} RTKLIB_SRC)
 aux_source_directory(${SRC_DIR}/rcv RTKLIB_SRC_RCV)
