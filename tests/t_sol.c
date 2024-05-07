@@ -43,10 +43,15 @@ void ntou_api_test(void){
 
 void main(int argc, char**argv){
     int sys, prn;
-    int prns[] = {101,118,122,123,132,134,135};
+    char id[5]={0};
+    printf("%d\n", satid2no("C23"));
+    printf("%d\n", satid2no("C37"));
+    // int prns[] = {101,118,122,123,132,134,135};
+    int prns[] = {63,69,71,78,92};
     for(int i=0;i<sizeof(prns)/sizeof(prns[0]);i++){
         sys = satsys(prns[i], &prn);
-        printf("%d => %d %d\n", prns[i], sys, prn);
+        satno2id(prns[i], id);
+        printf("%d => %s\n", prns[i], id);
     }
     // ntou_api_test();
 }

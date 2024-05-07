@@ -786,7 +786,7 @@ static void detslp_dop(rtk_t *rtk, const obsd_t *obs, const int *ix, int ns,
 static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
                    const int *iu, const int *ir, int ns, const nav_t *nav)
 {
-    double cp,pr,cp1,cp2,pr1,pr2,*bias,offset,freqi,freq1,freq2,C1,C2;
+    double cp,pr,cp1,cp2,pr1,pr2,*bias,freqi,freq1,freq2,C1,C2;
     int i,j,k,slip,rejc,reset,nf=NF(&rtk->opt),f2;
     
     trace(3,"udbias  : tt=%.3f ns=%d\n",tt,ns);
@@ -852,9 +852,17 @@ static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
             if (rtk->ssat[sat[i]-1].sys!=SYS_GLO) rtk->ssat[sat[i]-1].icbias[k]=0;  
         }
         bias=zeros(ns,1);
-        
+        double offset[6]={0};
+        int noffset[6]={0};
+        char prn[4];
+        int ps=0,sys=0,bi=0;
         /* estimate approximate phase-bias by delta phase - delta code */
-        for (i=j=0,offset=0.0;i<ns;i++) {
+        for (i=j=0;i<ns;i++) {
+            sys = satsys(obs[iu[i]].sat,NULL);
+            if (sys != ps){
+                for (bi=0;bi<6 && !test_sys(sys, bi); bi++);
+                ps = sys;
+            }
             if (rtk->opt.ionoopt!=IONOOPT_IFLC) {
                 /* phase diff between rover and base in cycles */
                 cp=sdobs(obs,iu[i],ir[i],k); /* cycle */
@@ -881,22 +889,39 @@ static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
                 bias[i]=(C1*cp1*CLIGHT/freq1+C2*cp2*CLIGHT/freq2)-(C1*pr1+C2*pr2);
             }
             if (rtk->x[IB(sat[i],k,&rtk->opt)]!=0.0) {
-                offset+=bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)];
-                j++;
+                // offset+=bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)];
+                offset[bi]+=bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)];
+                satno2id(sat[i],prn);
+                // j++;
+                noffset[bi]++;
+                trace(3, "correct bias: %3s:%d %6.3f\n", prn, k, bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)]);
             }
         }
         /* correct phase-bias offset to ensure phase-code coherency */
+        for (i=0;i<6;i++){
+            if (noffset[i]>0) {
+                offset[i]/=noffset[i];
+                trace(3, "correct bias mean: %d:%d %6.3f\n", i, k, offset[i]);
+                j=1;
+            }
+        }
         if (j>0) {
             for (i=1;i<=MAXSAT;i++) {
-                if (rtk->x[IB(i,k,&rtk->opt)]!=0.0) rtk->x[IB(i,k,&rtk->opt)]+=offset/j;
+                sys = satsys(i,NULL);
+                if (sys != ps){
+                    for (bi=0;bi<6 && !test_sys(sys, bi); bi++);
+                    ps = sys;
+                }
+                // if (rtk->x[IB(i,k,&rtk->opt)]!=0.0) rtk->x[IB(i,k,&rtk->opt)]+=offset;
+                if (rtk->x[IB(i,k,&rtk->opt)]!=0.0) rtk->x[IB(i,k,&rtk->opt)]+=offset[bi];
             }
         }
         /* set initial states of phase-bias */
-        for (i=0;i<ns;i++) {
-            if (bias[i]==0.0||rtk->x[IB(sat[i],k,&rtk->opt)]!=0.0) continue;
+        for (i=ps=0;i<ns;i++) {
+            if (bias[i]==0.0 || rtk->x[IB(sat[i],k,&rtk->opt)]!=0.0) continue;
             initx(rtk,bias[i],SQR(rtk->opt.std[0]),IB(sat[i],k,&rtk->opt));
             trace(3,"     sat=%3d, F=%d: init phase=%.3f\n",sat[i],k+1,bias[i]);
-            rtk->ssat[sat[i]-1].lock[k]=-rtk->opt.minlock;
+            if(rtk->opt.modear!=ARMODE_INST) rtk->ssat[sat[i]-1].lock[k]=-rtk->opt.minlock;
         }
         free(bias);
     }
@@ -1889,7 +1914,7 @@ static int valpos(rtk_t *rtk, const double *v, const double *R, const int *vflg,
                   int nv, double thres)
 {
     double fact=thres*thres;
-    int i,stat=1,sat1,sat2,type,freq;
+    int i,stat=1,sat1,sat2,type,freq,m,sys;
     char *stype;
     
     trace(3,"valpos  : nv=%d thres=%.1f\n",nv,thres);
@@ -1914,7 +1939,7 @@ static void sdres(rtk_t *rtk,int ns,const int *sat,double *y,const int *iu,const
     prcopt_t *opt=&rtk->opt;
     int m,i,j,f;
     int code,frq,sys=0,na,nf=NF(opt);
-    double bias=0, res;
+    double bias=0, res,freq;
 
     trace(3,"sdres   : ns=%d\n",ns);
     /* zero out residual phase and code biases for all satellites */
@@ -1931,9 +1956,9 @@ static void sdres(rtk_t *rtk,int ns,const int *sat,double *y,const int *iu,const
             if(!test_sys(sys, m)) continue;
             if(!validobs(iu[i],ir[i],f,nf,y)) continue;
             // if(!rtk->ssat[sat[i]-1].vs) continue;
-
+            freq = sat2freq(sat[i], rtk->ssat[sat[i]-1].code_rover[f],NULL);
             res = y[f+iu[i]*nf*2]-y[f+ir[i]*nf*2];
-            if(!code) rtk->ssat[sat[i]-1].sdrc[frq]=res;
+            if(!code) rtk->ssat[sat[i]-1].sdrc[frq]=res/CLIGHT*freq;
             else rtk->ssat[sat[i]-1].sdrp[frq]=res;
 
             // if (bias == 0.0) bias=res;
