@@ -1022,7 +1022,7 @@ typedef struct {        /* processing options type */
     int refpos;         /* base position for relative mode */
                         /* (0:pos in prcopt,  1:average of single pos, */
                         /*  2:read from file, 3:rinex header, 4:rtcm pos) */
-    double eratio[NFREQ]; /* code/phase error ratio */
+    double eratio[NFREQ*2]; /* code/phase error ratio */
     double err[8];      /* observation error terms */
                         /* [reserved,constant,elevation,baseline,doppler,snr-max,snr, rcv_std] */
     double std[3];      /* initial-state std [0]bias,[1]iono [2]trop */
@@ -1157,6 +1157,8 @@ typedef struct {        /* satellite status type */
     double phw;         /* phase windup (cycle) */
     gtime_t pt[2][NFREQ]; /* previous carrier-phase time */
     double  ph[2][NFREQ]; /* previous carrier-phase observable (cycle) */
+    double  sdrp[NFREQ];  /* single differential of pseudorange (m) */
+    double  sdrc[NFREQ];  /* single differential of carrier-phase meas (cycle) */
     uint8_t ref[NFREQ];   /* reference satellite flag */
     uint8_t code_rover[NFREQ];  /* rover obs code (CODE_)*/
     uint8_t code_base[NFREQ];   /* base obs code (CODE_) */
@@ -1189,6 +1191,7 @@ typedef struct {        /* RTK control/result type */
     prcopt_t opt;       /* processing options */
     int initial_mode;   /* initial positioning mode */
     int epoch;          /* epoch number */
+    double sdave[6][2*NFREQ];/* single differential average 0:G,1:R,2:E,3:C,4:Q,5:I*/
 } rtk_t;
 
 typedef struct {        /* receiver raw data control type */

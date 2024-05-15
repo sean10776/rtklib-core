@@ -1275,6 +1275,9 @@ static int convrnx_s(int sess, int format, rnxopt_t *opt, const char *file,
     else if (opt->ts.time) {
         str->time=timeadd(opt->ts,-1.0);
     }
+    if (opt->te.time && timediff(opt->te,str->time) < 0.0) {
+        str->time=timeadd(opt->te,-1.0);
+    }
     /* set GLONASS FCN in RINEX options */
     for (i=0;i<MAXPRNGLO;i++) {
         str->nav->glo_fcn[i]=opt->glofcn[i]; /* FCN+8 */
