@@ -369,6 +369,20 @@ static void outsolstat(rtk_t *rtk,const nav_t *nav)
         }
     }
 }
+/* test satellite system (m=0:GPS/SBS,1:GLO,2:GAL,3:BDS,4:QZS,5:IRN) ---------*/
+static int test_sys(int sys, int m)
+{
+    switch (sys) {
+        case SYS_GPS: return m==0;
+        case SYS_SBS: return m==0;
+        case SYS_GLO: return m==1;
+        case SYS_GAL: return m==2;
+        case SYS_CMP: return m==3;
+        case SYS_QZS: return m==4;
+        case SYS_IRN: return m==5;
+    }
+    return 0;
+}
 /* save error message --------------------------------------------------------*/
 static void errmsg(rtk_t *rtk, const char *format, ...)
 {
@@ -1177,20 +1191,6 @@ static double prectrop(gtime_t time, const double *pos, int r,
     else dtdx[1]=dtdx[2]=0.0;
     dtdx[0]=m_w;
     return m_w*x[i];
-}
-/* test satellite system (m=0:GPS/SBS,1:GLO,2:GAL,3:BDS,4:QZS,5:IRN) ---------*/
-static int test_sys(int sys, int m)
-{
-    switch (sys) {
-        case SYS_GPS: return m==0;
-        case SYS_SBS: return m==0;
-        case SYS_GLO: return m==1;
-        case SYS_GAL: return m==2;
-        case SYS_CMP: return m==3;
-        case SYS_QZS: return m==4;
-        case SYS_IRN: return m==5;
-    }
-    return 0;
 }
 /* double-differenced residuals and partial derivatives  -----------------------------------
         O rtk->ssat[i].resp[j] = residual pseudorange error
