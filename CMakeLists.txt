@@ -35,7 +35,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${RTKLIB_INCLUDE_DIR})
 
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} wsock32 winmm)
-elseif(UNIX AND !ANDROID)
+elseif(UNIX AND NOT ANDROID)
     target_link_libraries(${PROJECT_NAME} m rt pthread)
 endif()
 
