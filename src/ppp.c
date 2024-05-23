@@ -1201,6 +1201,10 @@ extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     
     /* satellite positions and clocks */
     satposs(obs[0].time,obs,n,nav,rtk->opt.sateph,rs,dts,var,svh);
+    for(i=0;i<n;i++) {
+        trace(3,"%s satellite positions and clocks sat=%2d rs=%13.3f %13.3f %13.3f dts=%12.3f var=%7.3f svh=%02X\n",
+              str,obs[i].sat,rs[i*6],rs[i*6+1],rs[i*6+2],dts[i*2]*1E9,var[i],svh[i]);
+    }
     
     /* exclude measurements of eclipsing satellite (block IIA) */
     if (rtk->opt.posopt[3]) {
