@@ -952,8 +952,10 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
         
         if ((r=geodist(rs+i*6,rr,e))<=0.0||
             satazel(pos,e,azel+i*2)<opt->elmin) {
-            trace(2, "satellite elevation angle out of limits: %s sat=%2d el=%.3f\n",
-                  str,sat,azel[1+i*2]*R2D);
+            if (azel[1+i*2] != 0.0) {
+                trace(2, "satellite elevation angle out of limits: %s sat=%2d el=%.3f\n",
+                    str,sat,azel[1+i*2]*R2D);
+            }
             exc[i]=1;
             continue;
         }
