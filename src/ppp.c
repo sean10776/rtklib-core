@@ -986,12 +986,23 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
             frq=j/2;
             
             if (opt->ionoopt==IONOOPT_IFLC) {
-                if ((y=code==0?Lc:Pc)==0.0) continue;
+                if ((y=code==0?Lc:Pc)==0.0) {
+                    trace(2,"iono-free LC not available: %s sat=%2d code=%d\n",
+                          str,sat,code);
+                    continue;
+                }
             }
             else {
-                if ((y=code==0?L[frq]:P[frq])==0.0) continue;
+                if ((y=code==0?L[frq]:P[frq])==0.0) {
+                    trace(2,"no valid obs data: %s sat=%2d code=%d frq=%d\n",
+                          str,sat,code,frq);
+                    continue;
+                }
                 
-                if ((freq=sat2freq(sat,obs[i].code[frq],nav))==0.0) continue;
+                if ((freq=sat2freq(sat,obs[i].code[frq],nav))==0.0) {
+                    trace(2,"invalid freq: %s sat=%2d\n",str,sat);
+                    continue;
+                }
                 C=SQR(FREQL1/freq)*ionmapf(pos,azel+i*2)*(code==0?-1.0:1.0);
             }
             for (k=0;k<nx;k++) H[k+nx*nv]=k<3?-e[k]:0.0;
