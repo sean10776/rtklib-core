@@ -757,7 +757,7 @@ static void udbias_ppp(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
             
             if (rtk->opt.ionoopt==IONOOPT_IFLC) {
                 bias[i]=Lc-Pc;
-                slip[i]=rtk->ssat[sat-1].slip[0]||rtk->ssat[sat-1].slip[1];
+                slip[i]=rtk->ssat[sat-1].slip[0]||rtk->ssat[sat-1].slip[obs[i].L[1]==0?2:1];
             }
             else if (L[f]!=0.0&&P[f]!=0.0) {
                 freq1=sat2freq(sat,obs[i].code[0],nav);
