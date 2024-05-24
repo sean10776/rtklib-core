@@ -1177,8 +1177,24 @@ static int test_hold_amb(rtk_t *rtk)
     /* test # of continuous fixed */
     return ++rtk->nfix>=rtk->opt.minfix;
 }
+/* carrier smoothed code (CSC) -----------------------------------------------*/
+static void csc(rtk_t *rtk, obsd_t *obs, int n, nav_t *nav, int max_n)
+{
+    /* P_hat = P/max_n + (P_prev + (L - L_prev))*((max_n-1)/max_n) */
+    int i,j;
+    double dL;  // doppler
+    for (i=0;i<n;i++) for (j=0;j<rtk->opt.nf;j++) {
+        if (obs[i].L[j]==0.0 || obs[i].P[j]==0.0) continue;
+        if (rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]==0.0 ||
+            rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j]==0.0
+        ) continue;
+        dL=obs[i].L[j]-rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j];
+        dL=dL*CLIGHT/sat2freq(obs[i].sat,obs[i].code[j],nav);
+        obs[i].P[j]=obs[i].P[j]/max_n+(rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]+dL)*(max_n-1)/max_n;
+    }
+}
 /* precise point positioning -------------------------------------------------*/
-extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
+extern void pppos(rtk_t *rtk, obsd_t *obs, int n, const nav_t *nav)
 {
     const prcopt_t *opt=&rtk->opt;
     double *rs,*dts,*var,*v,*H,*R,*azel,*xp,*Pp,dr[3]={0},std[3];
@@ -1194,6 +1210,11 @@ extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
     for (i=0;i<n&&i<MAXOBS;i++) for (j=0;j<opt->nf;j++) {
         rtk->ssat[obs[i].sat-1].snr_rover[j]=obs[i].SNR[j];
         rtk->ssat[obs[i].sat-1].snr_base[j] =0;
+    }
+
+    /* carrier smooth code (CSC) */
+    if (strstr(opt->pppopt,"-CSC")) {
+        csc(rtk,obs,n, nav,30);  /* hatch filter for 30 data */
     }
 
     /* temporal update of ekf states */
@@ -1270,6 +1291,15 @@ extern void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav)
             rtk->nfix=0;
         } 
     }
+
+    /* save carrier phase and pseudorange for next processing */
+    for (i=0;i<n;i++) for (j=0;j<opt->nf;j++) {
+        if (obs[i].L[j]==0.0 || obs[i].P[j]==0.0) continue;
+        rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j]=obs[i].L[j];
+        rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]=obs[i].P[j];
+    }
+
+    /* free memory */
     free(rs); free(dts); free(var); free(azel);
     free(xp); free(Pp); free(v); free(H); free(R);
 }

@@ -1157,6 +1157,7 @@ typedef struct {        /* satellite status type */
     double phw;         /* phase windup (cycle) */
     gtime_t pt[2][NFREQ]; /* previous carrier-phase time */
     double  ph[2][NFREQ]; /* previous carrier-phase observable (cycle) */
+    double  pc[2][NFREQ]; /* previous pseudorange observable (m) */
     double  sdrp[NFREQ];  /* single differential of pseudorange (m) */
     double  sdrc[NFREQ];  /* single differential of carrier-phase meas (cycle) */
     uint8_t ref[NFREQ];   /* reference satellite flag */
@@ -1815,13 +1816,13 @@ EXPORT int pntpos(const obsd_t *obs, int n, const nav_t *nav,
 /* precise positioning -------------------------------------------------------*/
 EXPORT void rtkinit(rtk_t *rtk, const prcopt_t *opt);
 EXPORT void rtkfree(rtk_t *rtk);
-EXPORT int  rtkpos (rtk_t *rtk, const obsd_t *obs, int nobs, const nav_t *nav);
+EXPORT int  rtkpos (rtk_t *rtk, obsd_t *obs, int nobs, const nav_t *nav);
 EXPORT int  rtkopenstat(const char *file, int level);
 EXPORT void rtkclosestat(void);
 EXPORT int  rtkoutstat(rtk_t *rtk, char *buff);
 
 /* precise point positioning -------------------------------------------------*/
-EXPORT void pppos(rtk_t *rtk, const obsd_t *obs, int n, const nav_t *nav);
+EXPORT void pppos(rtk_t *rtk, obsd_t *obs, int n, const nav_t *nav);
 EXPORT int pppnx(const prcopt_t *opt);
 EXPORT int pppoutstat(rtk_t *rtk, char *buff);
 
