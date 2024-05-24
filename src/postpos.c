@@ -427,7 +427,7 @@ static void procpos(FILE *fp, FILE *fptm, const prcopt_t *popt, const solopt_t *
         if (n<=0) continue;
         
         /* carrier-phase bias correction */
-        if (!strstr(popt->pppopt,"-ENA_FCB")) {
+        if (strstr(popt->pppopt,"-ENA_FCB")) {
             corr_phase_bias_ssr(obs_ptr,n,&navs);
         }
         if (!rtkpos(rtk, obs_ptr,n,&navs)) {
