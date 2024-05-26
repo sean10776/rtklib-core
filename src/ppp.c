@@ -939,6 +939,7 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
     char str[32];
     int ne=0,obsi[MAXOBS*2*NFREQ]={0},frqi[MAXOBS*2*NFREQ],maxobs,maxfrq,rej;
     int i,j,k,sat,sys,nv=0,nx=rtk->nx,stat=1,frq,code;
+    int code_only = strstr(opt->pppopt,"-CODE_ONLY")!=NULL;
     
     time2str(obs[0].time,str,2);
     
@@ -983,7 +984,7 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
                   rtk->ssat[sat-1].phw,L,P,&Lc,&Pc);
         
         /* stack phase and code residuals {L1,P1,L2,P2,...} */
-        for (j=0;j<2*NF(opt);j++) {
+        for (j=code_only?1:0;j<2*NF(opt);j=j+code_only+1) {
 
             dcb=bias=0.0;
             code=j%2; /* 0=phase, 1=code */
@@ -1066,7 +1067,7 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
             if (post&&fabs(v[nv])>sqrt(var[nv])*THRES_REJECT) {
                 obsi[ne]=i; frqi[ne]=j; ve[ne]=v[nv]; ne++;
             }
-            if (code==0) rtk->ssat[sat-1].vsat[frq]=1;
+            if (code==code_only) rtk->ssat[sat-1].vsat[frq]=1;
             nv++;
         }
     }
