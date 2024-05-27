@@ -57,9 +57,9 @@ extern "C" {
 
 /* constants -----------------------------------------------------------------*/
 
-#define VER_RTKLIB  "1.1.0"             /* library version */
+#define VER_RTKLIB  "1.0.0"             /* library version */
 
-#define PATCH_LEVEL ""               /* patch level */
+#define PATCH_LEVEL "b34g_ppp_analyze"               /* patch level */
 
 #define COPYRIGHT_RTKLIB \
             "Copyright (C) 2007-2020 T.Takasu\nAll rights reserved."
