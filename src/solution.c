@@ -1595,10 +1595,20 @@ extern int outprcopts(uint8_t *buff, const prcopt_t *opt)
     }
     p+=sprintf(p,"%s tropo opt : %s\r\n",COMMENTH,s5[opt->tropopt]);
     p+=sprintf(p,"%s ephemeris : %s\r\n",COMMENTH,s6[opt->sateph]);
-        p+=sprintf(p,"%s navi sys  :",COMMENTH);
-        for (i=0;sys[i];i++) {
-            if (opt->navsys&sys[i]) p+=sprintf(p," %s",s7[i]);
-        }
+    p+=sprintf(p,"%s navi sys  :",COMMENTH);
+    for (i=0;sys[i];i++) {
+        if (opt->navsys&sys[i]) p+=sprintf(p," %s",s7[i]);
+    }
+    p+=sprintf(p,"\r\n");
+    p+=sprintf(p,"%s eratio phase:",COMMENTH);
+    for (i=0;i<NFREQ;i++) {
+        p+=sprintf(p," %.2f",opt->eratio[i]);
+    }
+    p+=sprintf(p,"\r\n");
+    p+=sprintf(p,"%s eratio code :",COMMENTH);
+    for (i=0;i<NFREQ;i++) {
+        p+=sprintf(p," %.2f",opt->eratio[i+NFREQ]);
+    }
     p+=sprintf(p,"\r\n");
     if (PMODE_KINEMA<=opt->mode&&opt->mode<=PMODE_FIXED) {
         p+=sprintf(p,"%s amb res   : %s\r\n",COMMENTH,s8[opt->modear]);

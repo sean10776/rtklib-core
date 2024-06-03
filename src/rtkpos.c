@@ -415,10 +415,7 @@ static double varerr(int sat, int sys, double el, double snr_rover, double snr_b
     int nf=NF(opt),frq,code;
 
     frq=f%nf;code=f<nf?0:1;
-    /* increase variance for pseudoranges */
-    if (code) fact=opt->eratio[frq];
-    /* else adjust variance between freqs */
-    else fact=opt->eratio[frq]/opt->eratio[0];
+    fact=opt->eratio[f];
 
     /* adjust variance for constellation */
     switch (sys) {
@@ -713,8 +710,13 @@ static void detslp_gf(rtk_t *rtk, const obsd_t *obs, int i, int j,
 
     /* skip check if slip already detected or check disabled*/
     if (rtk->opt.thresslip==0) return;
-    for (k=0;k<rtk->opt.nf;k++)
-        if (rtk->ssat[sat-1].slip[k]&1) return;
+    for (k=0;k<rtk->opt.nf;k++){
+        if (rtk->ssat[sat-1].slip[k]&1){
+            // if (k==0) for(k=1;k<rtk->opt.nf;k++) rtk->ssat[sat-1].gf[k-1]=0.0;
+            // else rtk->ssat[sat-1].gf[k-1]=0.0;
+            return;
+        }
+    }
     
     for (k=1;k<rtk->opt.nf;k++) {
         /* calc SD geomotry free LC of phase between freq0 and freqk */
@@ -852,16 +854,15 @@ static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
             if (rtk->ssat[sat[i]-1].sys!=SYS_GLO) rtk->ssat[sat[i]-1].icbias[k]=0;  
         }
         bias=zeros(ns,1);
-        double offset[6]={0};
-        int noffset[6]={0};
         char prn[4];
-        int ps=0,sys=0,bi=0;
+        double offset[6]={0};
+        int ps=-1,bi=0,noffset[6]={0};
         /* estimate approximate phase-bias by delta phase - delta code */
         for (i=j=0;i<ns;i++) {
-            sys = satsys(obs[iu[i]].sat,NULL);
-            if (sys != ps){
-                for (bi=0;bi<6 && !test_sys(sys, bi); bi++);
-                ps = sys;
+            /* get current offset index */
+            if (ps != satsys(sat[i],NULL)){
+                ps = satsys(sat[i],NULL);
+                for (bi=0;bi<6 && !test_sys(ps, bi); bi++);
             }
             if (rtk->opt.ionoopt!=IONOOPT_IFLC) {
                 /* phase diff between rover and base in cycles */
@@ -889,10 +890,8 @@ static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
                 bias[i]=(C1*cp1*CLIGHT/freq1+C2*cp2*CLIGHT/freq2)-(C1*pr1+C2*pr2);
             }
             if (rtk->x[IB(sat[i],k,&rtk->opt)]!=0.0) {
-                // offset+=bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)];
                 offset[bi]+=bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)];
                 satno2id(sat[i],prn);
-                // j++;
                 noffset[bi]++;
                 trace(3, "correct bias: %3s:%d %6.3f\n", prn, k, bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)]);
             }
@@ -907,12 +906,11 @@ static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
         }
         if (j>0) {
             for (i=1;i<=MAXSAT;i++) {
-                sys = satsys(i,NULL);
-                if (sys != ps){
-                    for (bi=0;bi<6 && !test_sys(sys, bi); bi++);
-                    ps = sys;
+                /* get current offset index */
+                if (ps != satsys(i,NULL)){
+                    ps = satsys(i,NULL);
+                    for (bi=0;bi<6 && !test_sys(ps, bi); bi++);
                 }
-                // if (rtk->x[IB(i,k,&rtk->opt)]!=0.0) rtk->x[IB(i,k,&rtk->opt)]+=offset;
                 if (rtk->x[IB(i,k,&rtk->opt)]!=0.0) rtk->x[IB(i,k,&rtk->opt)]+=offset[bi];
             }
         }
@@ -1403,9 +1401,10 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
                     icb=rtk->ssat[sat[i]-1].icbias[frq]*CLIGHT/freqi - 
                         rtk->ssat[sat[j]-1].icbias[frq]*CLIGHT/freqj;
                 jj=IB(sat[j],frq,&rtk->opt);
-                trace(3,"sat=%3d-%3d %s%d v=%13.3f R=%9.6f %9.6f icb=%9.3f lock=%5d x=%9.3f P=%.3f\n",
+                trace(3,"sat=%3d-%3d %s%d v=%13.3f R=%9.6f %9.6f icb=%9.3f lock=%5d fix=%d x=%9.3f P=%.3f\n",
                         sat[i],sat[j],code?"P":"L",frq+1,v[nv],Ri[nv],Rj[nv],icb,
-                        rtk->ssat[sat[j]-1].lock[frq],x[jj],P[jj+jj*rtk->nx]);
+                        rtk->ssat[sat[j]-1].lock[frq],rtk->ssat[sat[j]-1].fix[frq],
+                        x[jj],P[jj+jj*rtk->nx]);
 
                 vflg[nv++]=(sat[i]<<16)|(sat[j]<<8)|((code?1:0)<<4)|(frq);
                 nb[b]++;
@@ -1428,6 +1427,26 @@ static int ddres(rtk_t *rtk, const nav_t *nav, const obsd_t *obs, double dt, con
     free(tropu); free(tropr); free(dtdxu); free(dtdxr);
 
     return nv;
+}
+static void outsatx(rtk_t *rtk, int ns, const int *sat, const char *title,
+                    const double *x, const double *p)
+{
+    int i,f,nf=NF(&rtk->opt);
+    char prn[5];
+    ssat_t ssat;
+
+    trace(3, "outsatx(%s) - %s: ns=%d\n",time_str(rtk->sol.time,2), title,ns);
+    for (f=0; f<nf;f++) {
+        for(i=0;i<ns;i++) {
+            ssat = rtk->ssat[sat[i]-1];
+            // if (!ssat.vsat[f]) continue;
+            if (x[IB(sat[i],f,&rtk->opt)]==0.0) continue;
+            satno2id(sat[i],prn);
+            trace(3, "%s L%d v=%d lock=%5d  fix=%d  x=%16.3f p=%8.3f\n",
+                prn, f+1, ssat.vsat[f], ssat.lock[f], ssat.fix[f], 
+                x[IB(sat[i],f,&rtk->opt)], p[IB(sat[i],f,&rtk->opt)+IB(sat[i],f,&rtk->opt)*rtk->nx]);
+        }
+    }
 }
 /* time-interpolation of residuals (for post-processing solutions) -----------
         time = rover time stamp
@@ -1614,6 +1633,9 @@ static void holdamb(rtk_t *rtk, const double *xa)
             
             H[index[0]+nv*rtk->nx]= 1.0;
             H[index[i]+nv*rtk->nx]=-1.0;
+            int sat1 = (index[0]+1-NR(&rtk->opt)-MAXSAT*f);
+            int sat2 = (index[i]+1-NR(&rtk->opt)-MAXSAT*f);
+            trace(3,"holdamb: sat=%3d-%3d L%d v=%.3f\n",sat1,sat2,f+1,v[nv]);
             nv++;
         }
     }
@@ -1988,7 +2010,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     /* time diff between base and rover observations */
     dt=timediff(time,obs[nu].time);
     trace(3,"relpos  : dt=%.3f nu=%d nr=%d\n",dt,nu,nr);
-
+    
     /* define local matrices, n=total observations, base + rover */
     rs=mat(6,n);            /* range to satellites */
     dts=mat(2,n);           /* satellite clock biases */
@@ -2040,6 +2062,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     trace(4,"before udstate: x="); tracemat(4,rtk->x,1,NR(opt),13,4);
     udstate(rtk,obs,sat,iu,ir,ns,nav);
     trace(4,"after udstate x="); tracemat(4,rtk->x,1,NR(opt),13,4);
+    outsatx(rtk,ns,sat,"KF Predict",rtk->x,rtk->P); /* output satellite status after KF predict*/
     
     for (i=0;i<ns;i++) for (j=0;j<nf;j++) {
         
@@ -2134,6 +2157,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
         }
         else stat=SOLQ_NONE;
     }
+    outsatx(rtk,ns,sat,"KF Update",rtk->x,rtk->P); /* output satellite status after KF update*/
     /* resolve integer ambiguity by LAMBDA */
     if (stat==SOLQ_FLOAT) {
         /* if valid fixed solution, process it */
@@ -2144,14 +2168,17 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 
                 /* post-fit residuals for fixed solution (xa includes fixed phase biases, rtk->xa does not) */
                 nv=ddres(rtk,nav,obs,dt,xa,Pp,sat,y,e,azel,freq,iu,ir,ns,v,NULL,R,vflg);
+                outsatx(rtk,ns,sat,"After LAMBDA",xa,Pp); /* output satellite status after KF */
 
                 /* validation of fixed solution, always returns valid */
                 if (valpos(rtk,v,R,vflg,nv,4.0)) {
 
                     /* hold integer ambiguity if meet minfix count */
                     if (++rtk->nfix>=rtk->opt.minfix) {
-                        if (rtk->opt.modear==ARMODE_FIXHOLD||rtk->opt.glomodear==GLO_ARMODE_FIXHOLD)
+                        if (rtk->opt.modear==ARMODE_FIXHOLD||rtk->opt.glomodear==GLO_ARMODE_FIXHOLD){
                             holdamb(rtk,xa);
+                            outsatx(rtk,ns,sat,"After Fix & Hold",rtk->x,rtk->P); /* output satellite status after KF */
+                        }
                         /* switch to kinematic after qualify for hold if in static-start mode */
                         if (rtk->opt.mode==PMODE_STATIC_START) {
                             rtk->opt.mode=PMODE_KINEMA;
