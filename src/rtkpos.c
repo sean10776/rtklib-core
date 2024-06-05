@@ -1768,11 +1768,11 @@ static void holdamb(rtk_t *rtk, const double *xa)
     }
 }
 /* resolve integer ambiguity by LAMBDA ---------------------------------------
- * args :    rtk     IO  rtk control struct
+ * args :   rtk     IO  rtk control struct
  *          sat     I   list of common sats
  *          ns      I   # of common sats
  *          xa      O   fixed solution
- * return : status (1:failed,0:ok,other:error)
+ * return : status (2:ratio failed,1:labmda failed,0:ok,-1:not enough,other:error)
  */
 static int resamb_LAMBDA_n(rtk_t *rtk, const int *sat, int ns, double *xa)
 {
@@ -1882,17 +1882,18 @@ static int resamb_LAMBDA_n(rtk_t *rtk, const int *sat, int ns, double *xa)
             }
             else {
                 errmsg(rtk,"AR failed by matinv error \n");
-                info=-1;
+                info=1;
             } 
         }
         else { /* validation failed */
             errmsg(rtk,"ambiguity validation failed (nb=%d ratio=%.2f thresh=%.2f s=%.2f/%.2f)\n",
                    nb,ratio,rtk->sol.thres,s[0],s[1]);
-            info=1;
+            info=2;
         }
     }
     else {
         errmsg(rtk,"lambda error (info=%d)\n",info);
+        info=1;
     }
     free(ix);
     free(y); free(DP); free(b); free(db); free(Qb); free(Qab); free(QQ); free(bias);
@@ -2033,9 +2034,9 @@ static int resamb_LAMBDA(rtk_t *rtk, double *bias, double *xa, int gps, int glo,
  */
 static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *sat, int ns)
 {
-    int i,f,nf=NF(&rtk->opt),nb,info;
+    int i,f,nf=NF(&rtk->opt),nar,info,arsats[MAXSAT]={0},exsat,exfreq,exlock;
     double posvar=0;
-    float ratio1=0.0;
+    float ratio1=0.0,ratio2=0.0;
     prcopt_t *opt=&rtk->opt;
     trace(3,"manage_amb_LAMBDA_n:\n");
 
@@ -2044,7 +2045,7 @@ static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *
     posvar/=3.0; /* maintain compatibility with previous code */
 
     trace(3,"posvar=%.6f\n",posvar);
-    trace(3,"prevRatios= %.3f %.3f\n",rtk->sol.prev_ratio1,rtk->sol.prev_ratio2);
+    trace(3,"prevRatios par:%.3f fin:%.3f\n",rtk->sol.prev_ratio1,rtk->sol.prev_ratio2);
     trace(3,"num ambiguities used last AR: %d\n",rtk->nb_ar);
 
     /* skip AR if don't meet criteria */
@@ -2056,11 +2057,63 @@ static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *
         rtk->nb_ar=0;
         return 0;
     }
-    if(!(info=resamb_LAMBDA_n(rtk,sat,ns,xa))){
-        rtk->sol.prev_ratio1=rtk->sol.prev_ratio2=rtk->sol.ratio; /* save ratio */
+    if((info=resamb_LAMBDA_n(rtk,sat,ns,xa))<0){ 
+        /* not enough sat for LAMBDA */
+        trace(2,"lambda error (info=%d)\n",info);
+        rtk->sol.ratio=0.0;
+        rtk->sol.prev_ratio1=rtk->sol.prev_ratio2=0.0; /* save ratio */
+        rtk->nb_ar=0;
+        return info;
+    }
+    rtk->sol.prev_ratio1=ratio1=rtk->sol.ratio; /* save initial ratio */
+    if(!info){ /* if successful, save ratio */
+        rtk->sol.prev_ratio2=ratio1; /* save ratio */
         return 0;
     }
-    ratio1=rtk->sol.ratio; /* save initial ratio */
+    if (!opt->arfilter) return info; /* skip PAR filtering */
+    /* start PAR if no fix */
+    if (ratio1 < rtk->sol.thres){
+        /* TODO rewrite PAR logic */
+        /* get all fix sat */
+        for(f=nar=0;f<nf;f++) for(i=0;i<ns;i++){
+            if (rtk->ssat[sat[i]-1].fix[f]>=2){
+                arsats[nar++]=(sat[i]-1<<4)|f;
+            }
+        }
+        if (nar < opt->minfixsats+1){
+            trace(3,"not enough fixed sats for PAR\n");
+            rtk->sol.prev_ratio2=ratio1; /* save ratio */
+            return info;
+        }
+        for(i=0,ratio2=0.0;i<nar;i++){
+            exsat=arsats[i]>>4;
+            exfreq=arsats[i]&0xF;
+            exlock=rtk->ssat[exsat].lock[exfreq];
+            rtk->ssat[exsat].lock[exfreq]=-rtk->nb_ar;
+            trace(3,"PAR(%d) lambda remove sat=%d:%d\n",i,exsat+1,exfreq);
+            if((info=resamb_LAMBDA_n(rtk,sat,ns,xa))<0){ 
+                /* not enough sat for LAMBDA */
+                trace(2,"PAR(%d) lambda error (info=%d)\n",info);
+                rtk->sol.prev_ratio1=rtk->sol.prev_ratio2=ratio1; /* save ratio */
+                return info;
+            }
+            ratio2=rtk->sol.ratio;
+            if (ratio2 > rtk->sol.thres) {
+                trace(3,"PAR(%d) success after remove sat=%d:%d\n",i,exsat+1,exfreq);
+                rtk->sol.prev_ratio2=ratio2; /* save ratio */
+                return 0;
+            }
+            /* restore by ratio2 is less then previous final 1.5*ratio */
+            if (ratio2 < rtk->sol.prev_ratio2 * 1.5){
+                rtk->ssat[exsat].lock[exfreq]=exlock;
+                trace(3,"PAR(%d) lambda restore sat=%d:%d\n",i,exsat+1,exfreq);
+            }
+            /* restore whatever */
+            // if (ratio2 < ratio1)
+            //     rtk->ssat[exsat].lock[exfreq]=exlock;
+        }
+        rtk->sol.prev_ratio2=ratio2;
+    }
 
     return info;
 }
@@ -2395,7 +2448,8 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     /* resolve integer ambiguity by LAMBDA */
     if (stat==SOLQ_FLOAT) {
         /* if valid fixed solution, process it */
-        if (manage_amb_LAMBDA(rtk,bias,xa,sat,nf,ns)>1) {
+        if (!manage_amb_LAMBDA_n(rtk,bias,xa,sat,ns)) {
+        // if (manage_amb_LAMBDA(rtk,bias,xa,sat,nf,ns)>1) {
 
             /* find zero-diff residuals for fixed solution */
             if (zdres(0,obs,nu,rs,dts,var,svh,nav,xa,opt,0,y,e,azel,freq)) {
