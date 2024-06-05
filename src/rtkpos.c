@@ -264,9 +264,9 @@ extern int rtkoutstat(rtk_t *rtk, char *buff)
     p+=sprintf(p,"$CLK,%d,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f",
                week,tow,rtk->sol.stat,1,rtk->sol.dtr[0]*1E9,rtk->sol.dtr[1]*1E9,
                rtk->sol.dtr[2]*1E9,rtk->sol.dtr[3]*1E9);
-    for (i=0;i<4;i++) for (j=0;j<nf;j++){
-        p+=sprintf(p, ",%.3f", rtk->sdave[i][NFREQ+j]/CLIGHT*1E9);
-    }
+    // for (i=0;i<4;i++) for (j=0;j<nf;j++){
+    //     p+=sprintf(p, ",%.3f", rtk->sdave[i][NFREQ+j]/CLIGHT*1E9);
+    // }
     p+=sprintf(p, "\n");
 
     /* ionospheric parameters */
@@ -1505,6 +1505,81 @@ static double intpres(gtime_t time, const obsd_t *obs, int n, const nav_t *nav,
         return tt;
     } else return ttb;
 }
+/* ddidx() create double-difference transformation matrix (D') ---------------------------
+ * args:    rtk     IO  rtk control struct
+ *          sat     I   list of common sats
+ *          ns      I   # of common sats
+ *          ix      O   state index for each sat pair
+ */
+static int ddidx_n(rtk_t *rtk, const int *sat, int ns, int *ix)
+{
+    int i,j,f,nf=NF(&rtk->opt),m,s,nofix,nb=0;
+    int glo,bds,sbas,ref[MAXSAT],fix[MAXSAT];
+    prcopt_t *opt=&rtk->opt;
+    glo=(opt->navsys&SYS_GLO)?(((opt->glomodear==GLO_ARMODE_FIXHOLD)&&!rtk->holdamb)?0:1):0;
+    sbas=(opt->navsys&SYS_GLO)?glo:((opt->navsys&SYS_SBS)?1:0);
+    bds=opt->bdsmodear;
+    trace(3,"ddidx: s=%d\n", ns);
+
+    /* clear fix flag for all sats (1=float, 2=fix, 3=hold) */
+    for (i=0;i<MAXSAT;i++) for (j=0;j<NFREQ;j++) {
+        rtk->ssat[i].fix[j]=0;
+    }
+    
+    /* find all sat pair through each system */
+    for(m=0;m<6;m++){
+        /* skip if ambiguity resolution turned off for this sys */
+        nofix=(m==1&&glo==0)||(m==3&&!bds);
+        if (nofix) continue;
+
+        /* step through freqs */
+        for(f=0;f<nf;f++){
+            /* look for first valid sat as ref sat */
+            for(i=-1,j=0;j<ns;j++) {
+                s=sat[j]-1;
+                if(!test_sys(rtk->ssat[s].sys,m))continue;
+                if(!rtk->ssat[s].vsat[f]) continue;
+
+                if(rtk->ssat[s].lock[f]>=0&&!(rtk->ssat[s].slip[f]&LLI_HALFC)&&
+                    rtk->ssat[s].azel[1]>=rtk->opt.elmaskar) {
+                    i=j;
+                    break;
+                } else rtk->ssat[s].fix[f]=1; /* float */
+            }
+            if (i<0) continue; /* no good sat found */
+
+            /* step through all sats */
+            for(j=0;j<ns;j++) {
+                if(i==j) continue; /* skip ref sat */
+                s=sat[j]-1;
+                if(!test_sys(rtk->ssat[s].sys,m))continue;
+                if(!rtk->ssat[s].vsat[f]) continue;
+                if(sbas==0&&rtk->ssat[s].sys==SYS_SBS) continue; /* skip sbas sats if sbs ar off */
+                
+                /* set D coeffs to substract sat j from sat i */
+                if(rtk->ssat[s].lock[f]>=0&&!(rtk->ssat[s].slip[f]&LLI_HALFC)&&
+                    rtk->ssat[s].azel[1]>=rtk->opt.elmaskar) {
+                    ix[nb*2  ]=IB(sat[i],f,opt); /* state index of ref bias index */
+                    ix[nb*2+1]=IB(sat[j],f,opt); /* state index of target bias index */
+                    rtk->ssat[sat[i]-1].fix[f]=rtk->ssat[s].fix[f]=2; /* set both sat fix */
+                    ref[nb]=sat[i];
+                    fix[nb++]=sat[j];
+                } else rtk->ssat[s].fix[f]=1; /* float */
+            }
+        }
+    }
+
+    /* trace sat pair */
+    if (nb) {
+        char msg[1024]="",*p;
+        for(i=0,p=msg;i<nb;i++) p+=sprintf(p,"%7d ",ref[i]);
+        trace(3, "refSats= %s\n", msg);
+        for(i=0,p=msg;i<nb;i++) p+=sprintf(p,"%7d ",fix[i]);
+        trace(3, "fixSats= %s\n", msg);
+    }
+    
+    return nb;
+}
 /* index for single to double-difference transformation matrix (D') --------------------*/
 static int ddidx(rtk_t *rtk, int *ix, int gps, int glo, int sbs)
 {
@@ -1577,30 +1652,17 @@ static int ddidx(rtk_t *rtk, int *ix, int gps, int glo, int sbs)
     return nb;
 }
 /* translate double diff fixed phase-bias values to single diff fix phase-bias values */
-static void restamb(rtk_t *rtk, const double *bias, int nb, double *xa)
+static void restamb(rtk_t *rtk, const int *ix, int nb, const double *bias, double *xa)
 {
-    int i,n,m,f,index[MAXSAT]={0},nv=0,nf=NF(&rtk->opt);
-    
     trace(3,"restamb :\n");
-    
-    for (i=0;i<rtk->nx;i++) xa[i]=rtk->x [i];  /* init all fixed states to float state values */
-    for (i=0;i<rtk->na;i++) xa[i]=rtk->xa[i];  /* overwrite non phase-bias states with fixed values */
-    
-    for (m=0;m<6;m++) for (f=0;f<nf;f++) {
-        
-        for (n=i=0;i<MAXSAT;i++) {
-            if (!test_sys(rtk->ssat[i].sys,m)||rtk->ssat[i].fix[f]!=2) {
-                continue;
-            }
-            index[n++]=IB(i+1,f,&rtk->opt);
-        }
-        if (n<2) continue;
-        
-        xa[index[0]]=rtk->x[index[0]];
-        
-        for (i=1;i<n;i++) {
-            xa[index[i]]=xa[index[0]]-bias[nv++];
-        }
+    int i,ref,fix;
+    for (i=0;i<rtk->nx;i++){
+        /* set non phase-bias states to fixed values, phase-bias to float values */
+        xa[i]=i<rtk->na?rtk->xa[i]:rtk->x[i];
+    }
+    for (i=0;i<nb;i++) {
+        ref=ix[i*2]; fix=ix[i*2+1];
+        xa[fix]=xa[ref]-bias[i];
     }
 }
 /* hold integer ambiguity ----------------------------------------------------*/
@@ -1705,8 +1767,140 @@ static void holdamb(rtk_t *rtk, const double *xa)
         }
     }
 }
+/* resolve integer ambiguity by LAMBDA ---------------------------------------
+ * args :    rtk     IO  rtk control struct
+ *          sat     I   list of common sats
+ *          ns      I   # of common sats
+ *          xa      O   fixed solution
+ * return : status (1:failed,0:ok,other:error)
+ */
+static int resamb_LAMBDA_n(rtk_t *rtk, const int *sat, int ns, double *xa)
+{
+    prcopt_t *opt=&rtk->opt;
+    int i,j,nb,nb1,info,nx=rtk->nx,na=rtk->na,minfixsats=opt->minfixsats>6?opt->minfixsats:6;
+    double *DP,*y,*b,*db,*Qb,*Qab,*QQ,s[2],*bias,ratio;
+    int *ix;
+    double coeff[3];
+    double QQb[MAXSAT];
+
+    trace(3,"resamb_LAMBDA : nx=%d\n",nx);
+
+    rtk->sol.ratio=0.0;
+    rtk->nb_ar=0;
+    /* Create index of single to double-difference transformation matrix (D')
+          used to translate phase biases to double difference */
+    ix=imat(nx,2);
+    if ((nb=ddidx_n(rtk,sat,ns,ix))<(opt->minfixsats-1)) {  /* nb is sat pairs */
+        errmsg(rtk,"not enough valid double-differences\n");
+        free(ix);
+        return -1; /* flag abort */
+    }
+    rtk->nb_ar=nb;
+    /* nx=# of float states, na=# of fixed states, nb=# of double-diff phase biases */
+    y=mat(nb,1); DP=mat(nb,nx-na); b=mat(nb,2); db=mat(nb,1); Qb=mat(nb,nb);
+    Qab=mat(na,nb); QQ=mat(na,nb); bias=mat(nb,1);
+
+    /* phase-bias covariance (Qb) and real-parameters to bias covariance (Qab) */
+    /* y=D*xc, Qb=D*Qc*D', Qab=Qac*D' */
+    for (i=0;i<nb;i++) {
+        y[i]=rtk->x[ix[i*2]]-rtk->x[ix[i*2+1]];
+    }
+    for (j=0;j<nx-na;j++) for (i=0;i<nb;i++) {
+        DP[i+j*nb]=rtk->P[ix[i*2]+(na+j)*nx]-rtk->P[ix[i*2+1]+(na+j)*nx];
+    }
+    for (j=0;j<nb;j++) for (i=0;i<nb;i++) {
+        Qb[i+j*nb]=DP[i+(ix[j*2]-na)*nb]-DP[i+(ix[j*2+1]-na)*nb];
+    }
+    for (j=0;j<nb;j++) for (i=0;i<na;i++) {
+        Qab[i+j*na]=rtk->P[i+ix[j*2]*nx]-rtk->P[i+ix[j*2+1]*nx];
+    }
+    for (i=0;i<nb;i++) QQb[i]=1000*Qb[i+i*nb];
+
+    trace(3,"N(0)=     "); tracemat(3,y,1,nb,7,2);
+    trace(3,"Qb*1000=  "); tracemat(3,QQb,1,nb,7,4);
+
+    /* lambda/mlambda integer least-square estimation */
+    /* return best integer solutions */
+    /* b are best integer solutions, s are residuals */
+    if (!(info=lambda(nb,2,y,Qb,b,s))) {
+        trace(3,"N(1)=     "); tracemat(3,b   ,1,nb,7,2);
+        trace(3,"N(2)=     "); tracemat(3,b+nb,1,nb,7,2);
+
+        rtk->sol.ratio=ratio=s[0]>0?(float)(s[1]/s[0]):0.0f;
+        if (rtk->sol.ratio>999.9) rtk->sol.ratio=999.9f;
+
+        /* adjust AR ratio based on # of sats, unless minAR==maxAR */
+        if (opt->thresar[5]!=opt->thresar[6]) {
+            nb1=nb<50?nb:50; /* poly only fitted for upto 50 sat pairs */
+            /* generate poly coeffs based on nominal AR ratio */
+            for (i=0;i<3;i++) {
+                coeff[i] = ar_poly_coeffs[i][0];
+                for (j=1;j<5;j++)coeff[i] = coeff[i]*opt->thresar[0]+ar_poly_coeffs[i][j];
+            }
+            /* generate adjusted AR ratio based on # of sat pairs */
+            rtk->sol.thres = coeff[0];
+            for (i=1;i<3;i++) {
+                rtk->sol.thres = rtk->sol.thres*1/(nb1+1)+coeff[i];
+            }
+            rtk->sol.thres = MIN(MAX(rtk->sol.thres,opt->thresar[5]),opt->thresar[6]);
+        } else {
+            rtk->sol.thres=(float)opt->thresar[0];
+        }
+        /* validation by popular ratio-test of residuals*/
+        if (s[0]<=0.0||ratio>=rtk->sol.thres) {
+            
+            /* init non phase-bias states and covariances with float solution values */
+            /* transform float to fixed solution (xa=x-Qab*Qb\(b0-b)) */
+            for (i=0;i<na;i++) {
+                rtk->xa[i]=rtk->x[i];
+                for (j=0;j<na;j++) rtk->Pa[i+j*na]=rtk->P[i+j*nx];
+            }
+            /* y = differences between float and fixed dd phase-biases
+               bias = fixed dd phase-biases   */
+            for (i=0;i<nb;i++) {
+                bias[i]=b[i];
+                y[i]-=b[i];
+            }
+            /* adjust non phase-bias states and covariances using fixed solution values */
+            if (!matinv(Qb,nb)) {  /* returns 0 if inverse successful */
+                /* rtk->xa = rtk->x-Qab*Qb^-1*(b0-b) */
+                matmul("NN",nb,1,nb, 1.0,Qb ,y,0.0,db); /* db = Qb^-1*(b0-b) */
+                matmul("NN",na,1,nb,-1.0,Qab,db,1.0,rtk->xa); /* rtk->xa = rtk->x-Qab*db */
+                
+                /* rtk->Pa=rtk->P-Qab*Qb^-1*Qab') */
+                /* covariance of fixed solution (Qa=Qa-Qab*Qb^-1*Qab') */
+                matmul("NN",na,nb,nb, 1.0,Qab,Qb ,0.0,QQ);  /* QQ = Qab*Qb^-1 */
+                matmul("NT",na,na,nb,-1.0,QQ ,Qab,1.0,rtk->Pa); /* rtk->Pa = rtk->P-QQ*Qab' */
+                
+                trace(3,"resamb : validation ok (nb=%d ratio=%.2f thresh=%.2f s=%.2f/%.2f)\n",
+                      nb,s[0]==0.0?0.0:ratio,rtk->sol.thres,s[0],s[1]);
+                
+                /* translate double diff fixed phase-bias values to single diff 
+                fix phase-bias values, result in xa */
+                restamb(rtk,ix,nb,bias,xa);
+                info=0;
+            }
+            else {
+                errmsg(rtk,"AR failed by matinv error \n");
+                info=-1;
+            } 
+        }
+        else { /* validation failed */
+            errmsg(rtk,"ambiguity validation failed (nb=%d ratio=%.2f thresh=%.2f s=%.2f/%.2f)\n",
+                   nb,ratio,rtk->sol.thres,s[0],s[1]);
+            info=1;
+        }
+    }
+    else {
+        errmsg(rtk,"lambda error (info=%d)\n",info);
+    }
+    free(ix);
+    free(y); free(DP); free(b); free(db); free(Qb); free(Qab); free(QQ); free(bias);
+    
+    return info;
+}
 /* resolve integer ambiguity by LAMBDA ---------------------------------------*/
-static int resamb_LAMBDA(rtk_t *rtk, double *bias, double *xa,int gps,int glo,int sbs)
+static int resamb_LAMBDA(rtk_t *rtk, double *bias, double *xa, int gps, int glo, int sbs)
 {
     prcopt_t *opt=&rtk->opt;
     int i,j,nb,nb1,info,nx=rtk->nx,na=rtk->na;
@@ -1809,7 +2003,7 @@ static int resamb_LAMBDA(rtk_t *rtk, double *bias, double *xa,int gps,int glo,in
                 
                 /* translate double diff fixed phase-bias values to single diff 
                 fix phase-bias values, result in xa */
-                restamb(rtk,bias,nb,xa);
+                restamb(rtk,ix,nb,bias,xa);
             }
             else nb=0;
         }
@@ -1828,7 +2022,48 @@ static int resamb_LAMBDA(rtk_t *rtk, double *bias, double *xa,int gps,int glo,in
     
     return nb; /* number of ambiguities */
 }
+/* manage_amb_LAMBDA() resolve integer ambiguity by LAMBDA using partial fix techniques and multiple attempts -----
+ * args :   rtk     IO  rtk control struct
+ *          bias    O   fixed phase-bias values
+ *          xa      O   fixed solution
+ *          sat     I   list of common sats
+ *          nf      I   # of freqs
+ *          ns      I   # of sats
+ * return : status (0:ok,other:error)
+ */
+static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *sat, int ns)
+{
+    int i,f,nf=NF(&rtk->opt),nb,info;
+    double posvar=0;
+    float ratio1=0.0;
+    prcopt_t *opt=&rtk->opt;
+    trace(3,"manage_amb_LAMBDA_n:\n");
 
+    /* calc position variance, will skip AR if too high to avoid false fix */
+    for (i=0;i<3;i++) posvar+=rtk->P[i+i*rtk->nx];
+    posvar/=3.0; /* maintain compatibility with previous code */
+
+    trace(3,"posvar=%.6f\n",posvar);
+    trace(3,"prevRatios= %.3f %.3f\n",rtk->sol.prev_ratio1,rtk->sol.prev_ratio2);
+    trace(3,"num ambiguities used last AR: %d\n",rtk->nb_ar);
+
+    /* skip AR if don't meet criteria */
+    if (opt->mode<=PMODE_DGPS||opt->modear==ARMODE_OFF||
+        opt->thresar[0]<1.0||posvar>opt->thresar[1]) {
+        trace(3,"Skip AR\n");
+        rtk->sol.ratio=0.0;
+        rtk->sol.prev_ratio1=rtk->sol.prev_ratio2=0.0;
+        rtk->nb_ar=0;
+        return 0;
+    }
+    if(!(info=resamb_LAMBDA_n(rtk,sat,ns,xa))){
+        rtk->sol.prev_ratio1=rtk->sol.prev_ratio2=rtk->sol.ratio; /* save ratio */
+        return 0;
+    }
+    ratio1=rtk->sol.ratio; /* save initial ratio */
+
+    return info;
+}
 /* resolve integer ambiguity by LAMBDA using partial fix techniques and multiple attempts -----------------------*/
 static int manage_amb_LAMBDA(rtk_t *rtk, double *bias, double *xa, const int *sat, int nf, int ns)
 {
@@ -2005,7 +2240,7 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
     int i,j,f,n=nu+nr,ns,ny,nv,sat[MAXSAT],iu[MAXSAT],ir[MAXSAT];
     int info,vflg[MAXOBS*NFREQ*2+1],svh[MAXOBS*2];
     int stat=rtk->opt.mode<=PMODE_DGPS?SOLQ_DGPS:SOLQ_FLOAT;
-    int nf=opt->ionoopt==IONOOPT_IFLC?1:opt->nf;
+    int nf=NF(opt);
     
     /* time diff between base and rover observations */
     dt=timediff(time,obs[nu].time);
@@ -2022,7 +2257,6 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 
     /* init satellite status arrays */
     for (i=0;i<MAXSAT;i++) {
-        rtk->ssat[i].sys=satsys(i+1,NULL); /* gnss system */
         for (j=0;j<NFREQ;j++) {
             rtk->ssat[i].vsat[j]=0;                                               /* valid satellite */
             rtk->ssat[i].snr_rover[j]=0;
@@ -2286,6 +2520,7 @@ extern void rtkinit(rtk_t *rtk, const prcopt_t *opt)
     for (i=0;i<MAXSAT;i++) {
         rtk->ambc[i]=ambc0;
         rtk->ssat[i]=ssat0;
+        rtk->ssat[i].sys=satsys(i+1,NULL);
     }
     rtk->holdamb=0;
     rtk->excsat=0;
