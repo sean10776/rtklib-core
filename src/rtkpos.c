@@ -1772,7 +1772,7 @@ static void holdamb(rtk_t *rtk, const double *xa)
  *          sat     I   list of common sats
  *          ns      I   # of common sats
  *          xa      O   fixed solution
- * return : status (2:ratio failed,1:labmda failed,0:ok,-1:not enough,other:error)
+ * return : status (2:ratio failed,1:labmda failed,0:ok,-1:not enough)
  */
 static int resamb_LAMBDA_n(rtk_t *rtk, const int *sat, int ns, double *xa)
 {
@@ -2034,7 +2034,8 @@ static int resamb_LAMBDA(rtk_t *rtk, double *bias, double *xa, int gps, int glo,
  */
 static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *sat, int ns)
 {
-    int i,f,nf=NF(&rtk->opt),nar,info,arsats[MAXSAT]={0},exsat,exfreq,exlock;
+    int i,f,nf=NF(&rtk->opt),nar,info;
+    int rerun,dly,arsats[MAXSAT]={0},exsat,exfreq,exlock;
     double posvar=0;
     float ratio1=0.0,ratio2=0.0;
     prcopt_t *opt=&rtk->opt;
@@ -2055,7 +2056,7 @@ static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *
         rtk->sol.ratio=0.0;
         rtk->sol.prev_ratio1=rtk->sol.prev_ratio2=0.0;
         rtk->nb_ar=0;
-        return 0;
+        return -1;
     }
     if((info=resamb_LAMBDA_n(rtk,sat,ns,xa))<0){ 
         /* not enough sat for LAMBDA */
@@ -2073,7 +2074,6 @@ static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *
     if (!opt->arfilter) return info; /* skip PAR filtering */
     /* start PAR if no fix */
     if (ratio1 < rtk->sol.thres){
-        /* TODO rewrite PAR logic */
         /* get all fix sat */
         for(f=nar=0;f<nf;f++) for(i=0;i<ns;i++){
             if (rtk->ssat[sat[i]-1].fix[f]>=2){
@@ -2085,6 +2085,36 @@ static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *
             rtk->sol.prev_ratio2=ratio1; /* save ratio */
             return info;
         }
+        /* if ratio is much poorer than previous epoch or not fix, remove new sats */
+        if (rtk->sol.prev_ratio2>=rtk->sol.thres&&(ratio1<rtk->sol.thres||
+            (ratio1<rtk->sol.thres*1.1 && ratio1<rtk->sol.prev_ratio2/2))){
+            trace(3,"PAR remove new sats\n");
+            dly=0;
+            for(i=0,ratio2=0.0;i<nar;i++){
+                exsat=arsats[i]>>4;
+                exfreq=arsats[i]&0xF;
+                if (rtk->ssat[exsat].lock[exfreq]>0) continue;
+                trace(3,"PAR remove new sat=%d:%d delay=%d\n",exsat+1,exfreq,dly);
+                rtk->ssat[exsat].lock[exfreq]=-opt->minlock-dly;
+                dly+=2;
+            }
+            if (dly>0){
+                trace(3,"PAR rerun AR\n");
+                if((info=resamb_LAMBDA_n(rtk,sat,ns,xa))<0){ 
+                    /* not enough sat for LAMBDA */
+                    trace(2,"PAR lambda error (info=%d)\n",info);
+                    rtk->sol.prev_ratio2=ratio1; /* save ratio */
+                    return info;
+                }
+                ratio2=rtk->sol.ratio;
+                if (ratio2 > rtk->sol.thres) {
+                    trace(3,"PAR success after remove new sats\n");
+                    rtk->sol.prev_ratio2=ratio2; /* save ratio */
+                    return 0;
+                }
+            }            
+        }
+        /* TODO rewrite PAR logic */
         for(i=0,ratio2=0.0;i<nar;i++){
             exsat=arsats[i]>>4;
             exfreq=arsats[i]&0xF;
