@@ -780,6 +780,7 @@ extern int peph2pos(gtime_t time, int sat, const nav_t *nav, int opt,
                     double *rs, double *dts, double *var)
 {
     gtime_t time_tt;
+    double t1,t2;
     double rss[3],rst[3],dtss[1],dtst[1],dant[3]={0},vare=0.0,varc=0.0,tt=1E-3;
     int i;
     
@@ -794,6 +795,12 @@ extern int peph2pos(gtime_t time, int sat, const nav_t *nav, int opt,
     time_tt=timeadd(time,tt);
     if (!pephpos(time_tt,sat,nav,rst,dtst,NULL,NULL)||
         !pephclk(time_tt,sat,nav,dtst,NULL)) return 0;
+    
+    /* age of precise ephemeris */
+    t1=timediff(time,nav->peph[nav->ne-1].time);
+    t2=timediff(time,nav->pclk[nav->nc-1].time);
+    trace(2,"age of precise ephemeris: %s sat=%2d t=%.0f %.0f\n",time_str(time,0),
+              sat,t1,t2);
     
     /* satellite antenna offset correction */
     if (opt) {
