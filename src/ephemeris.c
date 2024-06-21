@@ -648,6 +648,8 @@ static int satpos_ssr(gtime_t time, gtime_t teph, int sat, const nav_t *nav,
     t3=timediff(time,ssr->t0[2]);
     
     /* ssr orbit and clock correction (ref [4]) */
+    trace(2,"age of ssr: %s sat=%2d t=%.0f %.0f\n",time_str(time,0),
+              sat,t1,t2);
     if (fabs(t1)>MAXAGESSR||fabs(t2)>MAXAGESSR) {
         trace(2,"age of ssr error: %s sat=%2d t=%.0f %.0f\n",time_str(time,0),
               sat,t1,t2);
