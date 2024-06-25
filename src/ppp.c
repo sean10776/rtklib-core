@@ -1190,6 +1190,13 @@ static void csc(rtk_t *rtk, obsd_t *obs, int n, nav_t *nav, int max_n)
     double dL;  // doppler
     for (i=0;i<n;i++) for (j=0;j<rtk->opt.nf;j++) {
         if (obs[i].L[j]==0.0 || obs[i].P[j]==0.0) continue;
+
+        /* if cycle slip detected, reset phase and code */
+        if (rtk->ssat[obs[i].sat-1].slip[j]) {
+            rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j]=0.0;
+            rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]=0.0;
+        }
+        
         if (rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]==0.0 ||
             rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j]==0.0
         ) continue;
@@ -1217,13 +1224,13 @@ extern void pppos(rtk_t *rtk, obsd_t *obs, int n, const nav_t *nav)
         rtk->ssat[obs[i].sat-1].snr_base[j] =0;
     }
 
-    /* carrier smooth code (CSC) */
-    if (strstr(opt->pppopt,"-CSC")) {
-        csc(rtk,obs,n, nav,30);  /* hatch filter for 30 data */
-    }
-
     /* temporal update of ekf states */
     udstate_ppp(rtk,obs,n,nav);
+
+    /* carrier smooth code (CSC) */
+    if (strstr(opt->pppopt,"-CSC")) {
+        csc(rtk,obs,n,nav,30);  /* hatch filter for 30 data */
+    }
     
     /* satellite positions and clocks */
     satposs(obs[0].time,obs,n,nav,rtk->opt.sateph,rs,dts,var,svh);
