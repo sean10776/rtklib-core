@@ -57,7 +57,7 @@ extern "C" {
 
 /* constants -----------------------------------------------------------------*/
 
-#define VER_RTKLIB  "2.0.0"             /* library version */
+#define VER_RTKLIB  "2.0.1"             /* library version */
 
 #define PATCH_LEVEL "b34g_ppp_analyze"               /* patch level */
 

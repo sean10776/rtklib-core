@@ -98,7 +98,8 @@
 #define DEFURASSR 0.15            /* default accurary of ssr corr (m) */
 #define MAXECORSSR 10.0           /* max orbit correction of ssr (m) */
 #define MAXCCORSSR (1E-6*CLIGHT)  /* max clock correction of ssr (m) */
-#define MAXAGESSR 400.0            /* max age of ssr orbit and clock (s) */
+#define MAXAGESSR 2400.0            /* max age of ssr orbit and clock (s) */
+#define MAXAGESSR_GPS 400.0            /* max age of ssr orbit and clock for GPS (s) */
 #define MAXAGESSR_HRCLK 10.0      /* max age of ssr high-rate clock (s) */
 #define STD_BRDCCLK 30.0          /* error of broadcast clock (m) */
 #define STD_GAL_NAPA 500.0        /* error of galileo ephemeris for NAPA (m) */
@@ -646,11 +647,18 @@ static int satpos_ssr(gtime_t time, gtime_t teph, int sat, const nav_t *nav,
     t1=timediff(time,ssr->t0[0]);
     t2=timediff(time,ssr->t0[1]);
     t3=timediff(time,ssr->t0[2]);
+
+    sys=satsys(sat,NULL);
     
     /* ssr orbit and clock correction (ref [4]) */
     trace(2,"age of ssr: %s sat=%2d t=%.0f %.0f\n",time_str(time,0),
               sat,t1,t2);
-    if (fabs(t1)>MAXAGESSR||fabs(t2)>MAXAGESSR) {
+    if (sys==SYS_GPS && (fabs(t1)>MAXAGESSR_GPS || fabs(t2)>MAXAGESSR_GPS)) {
+        trace(2,"age of ssr error: %s sat=%2d t=%.0f\n",time_str(time,0),sat,t1);
+        *svh=-1;
+        return 0;
+    }
+    else if (sys!=SYS_GPS && (fabs(t1)>MAXAGESSR||fabs(t2)>MAXAGESSR)) {
         trace(2,"age of ssr error: %s sat=%2d t=%.0f %.0f\n",time_str(time,0),
               sat,t1,t2);
         *svh=-1;
@@ -676,7 +684,6 @@ static int satpos_ssr(gtime_t time, gtime_t teph, int sat, const nav_t *nav,
     if (!ephpos(time,teph,sat,nav,ssr->iode,rs,dts,var,svh)) return 0;
     
     /* satellite clock for gps, galileo and qzss */
-    sys=satsys(sat,NULL);
     if (sys==SYS_GPS||sys==SYS_GAL||sys==SYS_QZS||sys==SYS_CMP) {
         if (!(eph=seleph(teph,sat,ssr->iode,nav))) return 0;
         
