@@ -1164,6 +1164,7 @@ typedef struct {        /* satellite status type */
     uint8_t ref[NFREQ];   /* reference satellite flag */
     uint8_t code_rover[NFREQ];  /* rover obs code (CODE_)*/
     uint8_t code_base[NFREQ];   /* base obs code (CODE_) */
+    int ncsc[2][NFREQ]; /* windows size for carrier smoothing code */
 } ssat_t;
 
 typedef struct {        /* ambiguity control type */
