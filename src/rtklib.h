@@ -1077,7 +1077,7 @@ typedef struct {        /* solution options type */
                         /* nmeaintv[0]:gprmc,gpgga,nmeaintv[1]:gpgsv */
     char sep[64];       /* field separator */
     char prog[64];      /* program name */
-    double maxsolstd;   /* max std-dev for solution output (m) (0:all) */
+    double maxsolstd;   /* max std-dev for solution output (m) */
 } solopt_t;
 
 typedef struct {        /* file options type */
