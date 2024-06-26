@@ -116,7 +116,8 @@ static double prange(const obsd_t *obs, const nav_t *nav, const prcopt_t *opt,
     sat=obs->sat;
     sys=satsys(sat,NULL);
     P1=obs->P[0];
-    f2=seliflc(opt->nf,satsys(obs->sat,NULL));
+    // f2=seliflc(opt->nf,satsys(obs->sat,NULL));
+    f2=obs->L[1]==0.0?2:1;
     P2=obs->P[f2];
     *var=0.0;
     
@@ -670,10 +671,10 @@ extern int pntpos(const obsd_t *obs, int n, const nav_t *nav,
             ssat[obs[i].sat-1].snr_rover[0]=obs[i].SNR[0];
     }
     
-    if (opt_.mode!=PMODE_SINGLE) { /* for precise positioning */
-        opt_.ionoopt=IONOOPT_BRDC;
-        opt_.tropopt=TROPOPT_SAAS;
-    }
+    // if (opt_.mode!=PMODE_SINGLE) { /* for precise positioning */
+    //     opt_.ionoopt=IONOOPT_BRDC;
+    //     opt_.tropopt=TROPOPT_SAAS;
+    // }
     /* satellite positons, velocities and clocks */
     satposs(sol->time,obs,n,nav,opt_.sateph,rs,dts,var,svh);
     
