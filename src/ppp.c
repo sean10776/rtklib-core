@@ -1183,26 +1183,26 @@ static int test_hold_amb(rtk_t *rtk)
     return ++rtk->nfix>=rtk->opt.minfix;
 }
 /* carrier smoothed code (CSC) -----------------------------------------------*/
-static void csc(rtk_t *rtk, obsd_t *obs, int n, nav_t *nav, int max_n)
+static void csc(rtk_t *rtk, obsd_t *obs, int n, nav_t *nav)
 {
-    /* P_hat = P/max_n + (P_prev + (L - L_prev))*((max_n-1)/max_n) */
-    int i,j;
+    /* P_hat = P/ncsc + (P_prev + (L - L_prev))*((ncsc-1)/ncsc) */
+    int i,j,ncsc;
     double dL;  // doppler
     for (i=0;i<n;i++) for (j=0;j<rtk->opt.nf;j++) {
         if (obs[i].L[j]==0.0 || obs[i].P[j]==0.0) continue;
 
-        /* if cycle slip detected, reset phase and code */
+        /* if cycle slip detected, reset ncsc */
         if (rtk->ssat[obs[i].sat-1].slip[j]) {
-            rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j]=0.0;
-            rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]=0.0;
+            rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j]=0;
         }
+
+        ncsc = ++rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j] >= rtk->opt.maxncsc ?
+                rtk->opt.maxncsc : 
+                rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j];
         
-        if (rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]==0.0 ||
-            rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j]==0.0
-        ) continue;
         dL=obs[i].L[j]-rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j];
         dL=dL*CLIGHT/sat2freq(obs[i].sat,obs[i].code[j],nav);
-        obs[i].P[j]=obs[i].P[j]/max_n+(rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]+dL)*(max_n-1)/max_n;
+        obs[i].P[j]=obs[i].P[j]/ncsc+(rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]+dL)*(ncsc-1)/ncsc;
     }
 }
 /* precise point positioning -------------------------------------------------*/
@@ -1229,7 +1229,7 @@ extern void pppos(rtk_t *rtk, obsd_t *obs, int n, const nav_t *nav)
 
     /* carrier smooth code (CSC) */
     if (strstr(opt->pppopt,"-CSC")) {
-        csc(rtk,obs,n,nav,30);  /* hatch filter for 30 data */
+        csc(rtk,obs,n,nav);  /* hatch filter for 30 data */
     }
     
     /* satellite positions and clocks */

@@ -187,6 +187,7 @@ EXPORT opt_t sysopts[]={
     {"misc-rnxopt1",    2,  (void *)prcopt_.rnxopt[0],   ""     },
     {"misc-rnxopt2",    2,  (void *)prcopt_.rnxopt[1],   ""     },
     {"misc-pppopt",     2,  (void *)prcopt_.pppopt,      ""     },
+    {"misc-pppmaxncsc", 0,  (void *)&prcopt_.maxncsc,     "s"    },
     
     {"file-satantfile", 2,  (void *)&filopt_.satantp,    ""     },
     {"file-rcvantfile", 2,  (void *)&filopt_.rcvantp,    ""     },

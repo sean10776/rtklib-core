@@ -1055,6 +1055,7 @@ typedef struct {        /* processing options type */
     int  freqopt;       /* disable L2-AR */
     char pppopt[256];   /* ppp option */
     int hfilter;        /* reject data less than n time's of hfilter */
+    int maxncsc;        /* max window size of carrier smoothing code */
 } prcopt_t;
 
 typedef struct {        /* solution options type */
