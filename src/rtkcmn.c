@@ -210,7 +210,19 @@ const prcopt_t prcopt_default={ /* defaults processing options */
     1,1,1,1,0,                  /* armaxiter,estion,esttrop,dynamics,tidecorr */
     1,0,0,0,0,                  /* niter,codesmooth,intpref,sbascorr,sbassatsel */
     0,0,                        /* rovpos,refpos */
+#if NFREQ == 1
+    {300.0},
+#elif NFREQ == 2
+    {300.0,300.0},
+#elif NFREQ == 3
     {300.0,300.0,300.0},        /* eratio[] */
+#elif NFREQ == 4
+    {300.0,300.0,300.0,300.0},
+#elif NFREQ == 5
+    {300.0,300.0,300.0,300.0,300.0},
+#else
+    {300.0,300.0,300.0,300.0,300.0,300.0},
+#endif
     {100.0,0.003,0.003,0.0,1.0,52.0,0.0,0.0}, /* err[-,base,el,bl,dop,snr_max,snr,rcverr] */
     {30.0,0.03,0.3},            /* std[] */
     {1E-4,1E-3,1E-4,1E-1,1E-2,0.0}, /* prn[] */
@@ -224,14 +236,23 @@ const prcopt_t prcopt_default={ /* defaults processing options */
     {"",""},                    /* anttype */
     {{0}},{{0}},{0},            /* antdel,pcv,exsats */
     1,1,                        /* maxaveep,initrst */
-    0                           /* hfilter */
+    0,                          /* outsingle */
+    {"",""},                    /* rnxopt */
+    {0,0,0,0,0,0},              /* posopt */
+    0,                          /* syncsol */
+    {0.0, 0.0},                 /* odisp */
+    0,                          /* freqopt */
+    "",                         /* pppopt */
+    0,                          /* hfilter */
+    60,                         /* maxncsc */
 };
 const solopt_t solopt_default={ /* defaults solution output options */
     SOLF_LLH,TIMES_UTC,1,3,    /* posf,times,timef,timeu */
     0,1,0,0,0,0,0,              /* degf,outhead,outopt,outvel,datum,height,geoid */
     0,0,0,                      /* solstatic,sstat,trace */
     {0.0,0.0},                  /* nmeaintv */
-    " ",""                      /* separator/program name */
+    " ","",                      /* separator/program name */
+    0.0,                        /* maxsolstd */
 };
 const char *formatstrs[32]={    /* stream format strings */
     "RTCM 2",                   /*  0 */
