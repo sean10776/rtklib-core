@@ -1191,14 +1191,15 @@ static void csc(rtk_t *rtk, obsd_t *obs, int n, nav_t *nav)
     for (i=0;i<n;i++) for (j=0;j<rtk->opt.nf;j++) {
         if (obs[i].L[j]==0.0 || obs[i].P[j]==0.0) continue;
 
-        /* if cycle slip detected, reset ncsc */
+        /* if cycle slip detected, reset ncsc to -1 prevent using cycle slip data */
         if (rtk->ssat[obs[i].sat-1].slip[j]) {
-            rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j]=0;
+            rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j]=-1;
         }
 
         ncsc = ++rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j] >= rtk->opt.maxncsc ?
                 rtk->opt.maxncsc : 
                 rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j];
+        if (ncsc <= 1) continue;
         
         dL=obs[i].L[j]-rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j];
         dL=dL*CLIGHT/sat2freq(obs[i].sat,obs[i].code[j],nav);
