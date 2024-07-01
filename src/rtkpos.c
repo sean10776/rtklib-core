@@ -784,6 +784,19 @@ static void detslp_dop(rtk_t *rtk, const obsd_t *obs, const int *ix, int ns,
         }
     }
 }
+/* convert system to index */
+static int sys2idx(int sys)
+{
+    switch (sys) {
+        case SYS_GPS: return 0;
+        case SYS_GLO: return 1;
+        case SYS_GAL: return 2;
+        case SYS_CMP: return 3;
+        case SYS_QZS: return 4;
+        case SYS_IRN: return 5;
+    }
+    return 0;
+}
 /* temporal update of phase biases -------------------------------------------*/
 static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
                    const int *iu, const int *ir, int ns, const nav_t *nav)
@@ -859,11 +872,6 @@ static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
         int ps=-1,bi=0,noffset[6]={0};
         /* estimate approximate phase-bias by delta phase - delta code */
         for (i=j=0;i<ns;i++) {
-            /* get current offset index */
-            if (ps != satsys(sat[i],NULL)){
-                ps = satsys(sat[i],NULL);
-                for (bi=0;bi<6 && !test_sys(ps, bi); bi++);
-            }
             if (rtk->opt.ionoopt!=IONOOPT_IFLC) {
                 /* phase diff between rover and base in cycles */
                 cp=sdobs(obs,iu[i],ir[i],k); /* cycle */
@@ -890,10 +898,12 @@ static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
                 bias[i]=(C1*cp1*CLIGHT/freq1+C2*cp2*CLIGHT/freq2)-(C1*pr1+C2*pr2);
             }
             if (rtk->x[IB(sat[i],k,&rtk->opt)]!=0.0) {
+                /* get current offset index */
+                bi = sys2idx(rtk->ssat[sat[i]-1].sys);
                 offset[bi]+=bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)];
                 satno2id(sat[i],prn);
                 noffset[bi]++;
-                trace(3, "correct bias: %3s:%d %6.3f\n", prn, k, bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)]);
+                // trace(3, "correct bias: %3s:%d %6.3f\n", prn, k, bias[i]-rtk->x[IB(sat[i],k,&rtk->opt)]);
             }
         }
         /* correct phase-bias offset to ensure phase-code coherency */
@@ -904,19 +914,17 @@ static void udbias(rtk_t *rtk, double tt, const obsd_t *obs, const int *sat,
                 j=1;
             }
         }
-        if (j>0) {
+        if (0) {
             for (i=1;i<=MAXSAT;i++) {
                 /* get current offset index */
-                if (ps != satsys(i,NULL)){
-                    ps = satsys(i,NULL);
-                    for (bi=0;bi<6 && !test_sys(ps, bi); bi++);
-                }
+                bi = sys2idx(rtk->ssat[i-1].sys);
                 if (rtk->x[IB(i,k,&rtk->opt)]!=0.0) rtk->x[IB(i,k,&rtk->opt)]+=offset[bi];
             }
         }
         /* set initial states of phase-bias */
-        for (i=ps=0;i<ns;i++) {
+        for (i=0;i<ns;i++) {
             if (bias[i]==0.0 || rtk->x[IB(sat[i],k,&rtk->opt)]!=0.0) continue;
+            bias[i]-=offset[sys2idx(rtk->ssat[sat[i]-1].sys)];
             initx(rtk,bias[i],SQR(rtk->opt.std[0]),IB(sat[i],k,&rtk->opt));
             trace(3,"     sat=%3d, F=%d: init phase=%.3f\n",sat[i],k+1,bias[i]);
             if(rtk->opt.modear!=ARMODE_INST) rtk->ssat[sat[i]-1].lock[k]=-rtk->opt.minlock;
@@ -1442,8 +1450,8 @@ static void outsatx(rtk_t *rtk, int ns, const int *sat, const char *title,
             // if (!ssat.vsat[f]) continue;
             if (x[IB(sat[i],f,&rtk->opt)]==0.0) continue;
             satno2id(sat[i],prn);
-            trace(3, "%s L%d v=%d lock=%5d  fix=%d  x=%16.3f p=%8.3f\n",
-                prn, f+1, ssat.vsat[f], ssat.lock[f], ssat.fix[f], 
+            trace(3, "%3d:%s L%d v=%d lock=%5d  fix=%d  x=%16.3f p=%8.3f\n",
+                sat[i], prn, f+1, ssat.vsat[f], ssat.lock[f], ssat.fix[f], 
                 x[IB(sat[i],f,&rtk->opt)], p[IB(sat[i],f,&rtk->opt)+IB(sat[i],f,&rtk->opt)*rtk->nx]);
         }
     }
@@ -2023,6 +2031,21 @@ static int resamb_LAMBDA(rtk_t *rtk, double *bias, double *xa, int gps, int glo,
     
     return nb; /* number of ambiguities */
 }
+static double amb_weight(const rtk_t *rtk, const int sat, const int freq)
+{
+    const ssat_t *ssat;
+    double snr,w;
+    
+    if (sat<=0||MAXSAT<sat) return 0.0;
+    ssat=rtk->ssat+sat-1;
+    
+    if (ssat->snr_rover[freq]==0.0) return 0.0;
+    
+    snr=ssat->snr_rover[freq]*SNR_UNIT + (freq>0?3:0.0);
+    w=snr + ssat->lock[freq]*5;
+    // if (ssat->lock[freq]>0) w += 20.0;
+    return w;
+}
 /* manage_amb_LAMBDA() resolve integer ambiguity by LAMBDA using partial fix techniques and multiple attempts -----
  * args :   rtk     IO  rtk control struct
  *          bias    O   fixed phase-bias values
@@ -2034,8 +2057,7 @@ static int resamb_LAMBDA(rtk_t *rtk, double *bias, double *xa, int gps, int glo,
  */
 static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *sat, int ns)
 {
-    int i,f,nf=NF(&rtk->opt),nar,info;
-    int rerun,dly,arsats[MAXSAT]={0},exsat,exfreq,exlock;
+    int i,info,nopar;
     double posvar=0;
     float ratio1=0.0,ratio2=0.0;
     prcopt_t *opt=&rtk->opt;
@@ -2046,8 +2068,9 @@ static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *
     posvar/=3.0; /* maintain compatibility with previous code */
 
     trace(3,"posvar=%.6f\n",posvar);
-    trace(3,"prevRatios par:%.3f fin:%.3f\n",rtk->sol.prev_ratio1,rtk->sol.prev_ratio2);
+    trace(3,"prevRatios ar:%.1f fin:%.1f\n",rtk->sol.prev_ratio1,rtk->sol.prev_ratio2);
     trace(3,"num ambiguities used last AR: %d\n",rtk->nb_ar);
+    nopar=rtk->nb_ar==0;
 
     /* skip AR if don't meet criteria */
     if (opt->mode<=PMODE_DGPS||opt->modear==ARMODE_OFF||
@@ -2067,39 +2090,71 @@ static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *
         return info;
     }
     rtk->sol.prev_ratio1=ratio1=rtk->sol.ratio; /* save initial ratio */
-    if(!info){ /* if successful, save ratio */
+    if (!opt->arfilter){
         rtk->sol.prev_ratio2=ratio1; /* save ratio */
-        return 0;
+        return info; /* skip PAR filtering */
+    } 
+    /* Partial Ambiguity resolution */
+    int j,k,f,nf=NF(&rtk->opt),nar;
+    int newsats,arsats[MAXSAT]={0},exsat,exfreq,exlock;
+    double arweights[MAXSAT]={0},tmpratio=0.0;
+    /* start PAR if no fix or much poorer than previous epoch*/
+    if (!(ratio1 < rtk->sol.thres || ratio1 < rtk->sol.prev_ratio2 / 3)){ // invert logic
+        rtk->sol.prev_ratio2=ratio1; /* save ratio */
+        return info;
     }
-    if (!opt->arfilter) return info; /* skip PAR filtering */
-    /* start PAR if no fix */
-    if (ratio1 < rtk->sol.thres){
-        /* get all fix sat */
-        for(f=nar=0;f<nf;f++) for(i=0;i<ns;i++){
-            if (rtk->ssat[sat[i]-1].fix[f]>=2){
-                arsats[nar++]=(sat[i]-1<<4)|f;
-            }
+    trace(3,"PAR start\n");
+    /* get all fix sat */
+    for (f=newsats=nar=0; f<nf; f++) for (i=0; i<ns; i++){
+        if (rtk->ssat[sat[i]-1].fix[f]>=2){
+            arweights[nar]=amb_weight(rtk,sat[i],f);
+            arsats[nar++]=(sat[i]-1<<4)|f;
+            if (rtk->ssat[sat[i]-1].lock[f]==0) newsats++;
         }
-        if (nar < opt->minfixsats+1){
-            trace(3,"not enough fixed sats for PAR\n");
-            rtk->sol.prev_ratio2=ratio1; /* save ratio */
-            return info;
+    }
+    if (nar < opt->mindropsats){ /* not enough fixed sats for PAR */
+        trace(3,"not enough fixed sats for PAR\n");
+        rtk->sol.prev_ratio2=ratio1; /* save ratio */
+        return info;
+    }
+    /* sort arsats by freq and snr */
+    char msg[65535]={0},*p;
+    for (i=0,p=msg;i<nar;i++){
+        p+=sprintf(p,"%d:%d(%.2f) ",(arsats[i]>>4)+1,arsats[i]&0xF,arweights[i]);
+    }
+    trace(3,"PAR arsats=%s\n",msg);             
+    for (i=0;i<nar-1;i++) for (j=i+1;j<nar;j++){
+        if (arweights[i]>arweights[j]){
+            k=arsats[i]; arsats[i]=arsats[j]; arsats[j]=k;
+            k=arweights[i]; arweights[i]=arweights[j]; arweights[j]=k;
         }
-        /* if ratio is much poorer than previous epoch or not fix, remove new sats */
-        if (rtk->sol.prev_ratio2>=rtk->sol.thres&&(ratio1<rtk->sol.thres||
-            (ratio1<rtk->sol.thres*1.1 && ratio1<rtk->sol.prev_ratio2/2))){
+    }
+    trace(3,"PAR sorted\n");
+    for (i=0,p=msg;i<nar;i++){
+        p+=sprintf(p,"%d:%d(%.2f) ",(arsats[i]>>4)+1,arsats[i]&0xF,arweights[i]);
+    }
+    trace(3,"PAR arsats=%s\n",msg);
+
+    /* PAR Methods */
+    int method = 1;//newsats<nar*0.5-3?0:1;
+    int dropsats,maxdrop=nar-opt->mindropsats*(nopar?1.5:1);
+    ratio2=0.0;
+    for(j=0;j<2;j++){
+        switch (method) {
+        case 2:  // remove new sat *** not implemented ***
+            int dly;
             trace(3,"PAR remove new sats\n");
-            dly=0;
-            for(i=0,ratio2=0.0;i<nar;i++){
-                exsat=arsats[i]>>4;
-                exfreq=arsats[i]&0xF;
-                if (rtk->ssat[exsat].lock[exfreq]>0) continue;
-                trace(3,"PAR remove new sat=%d:%d delay=%d\n",exsat+1,exfreq,dly);
-                rtk->ssat[exsat].lock[exfreq]=-opt->minlock-dly;
-                dly+=2;
+            for(i=dly=dropsats=0; i<nar && dropsats<maxdrop;i++){
+                exsat=arsats[i]>>4; exfreq=arsats[i]&0xF;
+                if (rtk->ssat[exsat].lock[exfreq]!=0) continue;
+                rtk->ssat[exsat].lock[exfreq]=-((min(maxdrop, newsats))-dly)*(1<<nopar);//TODO rewrite delay logic
+                trace(3,"PAR remove new sat=%3d:%d delay=%d\n",
+                    exsat+1,exfreq,rtk->ssat[exsat].lock[exfreq]);
+                dly+=(1<<nopar);
+                dropsats++;
             }
-            if (dly>0){
-                trace(3,"PAR rerun AR\n");
+            if (dropsats){
+                trace(3,"PAR rerun AR with %d new sats removed\n",dropsats);
                 if((info=resamb_LAMBDA_n(rtk,sat,ns,xa))<0){ 
                     /* not enough sat for LAMBDA */
                     trace(2,"PAR lambda error (info=%d)\n",info);
@@ -2107,44 +2162,41 @@ static int manage_amb_LAMBDA_n(rtk_t *rtk, double *bias, double *xa, const int *
                     return info;
                 }
                 ratio2=rtk->sol.ratio;
-                if (ratio2 > rtk->sol.thres) {
-                    trace(3,"PAR success after remove new sats\n");
-                    rtk->sol.prev_ratio2=ratio2; /* save ratio */
-                    return 0;
+            }
+            break;
+        case 1: // remove sat from lowest snr
+            trace(3,"PAR remove lowest snr sat\n");
+            for(i=dropsats=0;i<3*(1<<nopar) && nar-dropsats>opt->minfixsats;i++){
+                exsat = arsats[i]>>4; exfreq= arsats[i]&0xF;
+                exlock=rtk->ssat[exsat].lock[exfreq];
+                rtk->ssat[exsat].lock[exfreq]=-opt->minlock;
+                trace(3,"PAR remove sat=%d:%d lock=%d\n",exsat+1,exfreq,rtk->ssat[exsat].lock[exfreq]);
+                if((info=resamb_LAMBDA_n(rtk,sat,ns,xa))<0){ 
+                    /* not enough sat for LAMBDA */
+                    trace(2,"PAR lambda error (info=%d)\n",info);
+                    rtk->sol.prev_ratio2=ratio1; /* save ratio */
+                    return info;
                 }
-            }            
+                ratio2=rtk->sol.ratio;
+                if (ratio2 > tmpratio){
+                    if (ratio2 > rtk->sol.thres && ratio2 > rtk->sol.prev_ratio2 / 3) break;
+                    dropsats++;
+                    tmpratio=ratio2;
+                } else {
+                    trace(3,"PAR fail restore sat %d:%d\n",exsat+1,exfreq);
+                    rtk->ssat[exsat].lock[exfreq]=exlock;
+                }
+            }
+            break;
         }
-        /* TODO rewrite PAR logic */
-        for(i=0,ratio2=0.0;i<nar;i++){
-            exsat=arsats[i]>>4;
-            exfreq=arsats[i]&0xF;
-            exlock=rtk->ssat[exsat].lock[exfreq];
-            rtk->ssat[exsat].lock[exfreq]=-rtk->nb_ar;
-            trace(3,"PAR(%d) lambda remove sat=%d:%d\n",i,exsat+1,exfreq);
-            if((info=resamb_LAMBDA_n(rtk,sat,ns,xa))<0){ 
-                /* not enough sat for LAMBDA */
-                trace(2,"PAR(%d) lambda error (info=%d)\n",info);
-                rtk->sol.prev_ratio1=rtk->sol.prev_ratio2=ratio1; /* save ratio */
-                return info;
-            }
-            ratio2=rtk->sol.ratio;
-            if (ratio2 > rtk->sol.thres) {
-                trace(3,"PAR(%d) success after remove sat=%d:%d\n",i,exsat+1,exfreq);
-                rtk->sol.prev_ratio2=ratio2; /* save ratio */
-                return 0;
-            }
-            /* restore by ratio2 is less then previous final 1.5*ratio */
-            if (ratio2 < rtk->sol.prev_ratio2 * 1.5){
-                rtk->ssat[exsat].lock[exfreq]=exlock;
-                trace(3,"PAR(%d) lambda restore sat=%d:%d\n",i,exsat+1,exfreq);
-            }
-            /* restore whatever */
-            // if (ratio2 < ratio1)
-            //     rtk->ssat[exsat].lock[exfreq]=exlock;
+        // method=(method+1)%2;
+        if (ratio2 > rtk->sol.thres){
+            trace(3,"PAR success\n");
+            rtk->sol.prev_ratio2=ratio2; /* save ratio */
+            return 0;
         }
-        rtk->sol.prev_ratio2=ratio2;
     }
-
+    rtk->sol.prev_ratio2=ratio2>0.0?ratio2:ratio1; /* save ratio */
     return info;
 }
 /* resolve integer ambiguity by LAMBDA using partial fix techniques and multiple attempts -----------------------*/
@@ -2270,6 +2322,7 @@ static int valpos(rtk_t *rtk, const double *v, const double *R, const int *vflg,
         if (v[i]*v[i]<=fact*R[i+i*nv]) continue;
         errmsg(rtk,"large residual (sat=%2d-%2d %s%d v=%6.3f sig=%.3f)\n",
               sat1,sat2,stype,freq+1,v[i],SQRT(R[i+i*nv]));
+        rtk->ssat[sat2-1].rejc[freq]++;
     }
     return stat;
 }
