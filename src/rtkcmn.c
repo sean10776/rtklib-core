@@ -208,7 +208,7 @@ const prcopt_t prcopt_default={ /* defaults processing options */
     0,3,3,1,0,1,                /* sateph,modear,glomodear,gpsmodear,bdsmodear,arfilter */
     20,0,4,5,10,20,             /* maxout,minlock,minfixsats,minholdsats,mindropsats,minfix */
     1,1,1,1,0,                  /* armaxiter,estion,esttrop,dynamics,tidecorr */
-    1,0,0,0,0,                  /* niter,codesmooth,intpref,sbascorr,sbassatsel */
+    1,60,0,0,0,                  /* niter,codesmooth,intpref,sbascorr,sbassatsel */
     0,0,                        /* rovpos,refpos */
 #if NFREQ == 1
     {300.0},
@@ -244,7 +244,6 @@ const prcopt_t prcopt_default={ /* defaults processing options */
     0,                          /* freqopt */
     "",                         /* pppopt */
     0,                          /* hfilter */
-    60,                         /* maxncsc */
 };
 const solopt_t solopt_default={ /* defaults solution output options */
     SOLF_LLH,TIMES_UTC,1,3,    /* posf,times,timef,timeu */

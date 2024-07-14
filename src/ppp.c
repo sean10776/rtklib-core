@@ -1197,8 +1197,8 @@ static void csc(rtk_t *rtk, obsd_t *obs, int n, nav_t *nav)
             rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j]=-1;
         }
 
-        ncsc = ++rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j] >= rtk->opt.maxncsc ?
-                rtk->opt.maxncsc : 
+        ncsc = ++rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j] >= rtk->opt.codesmooth ?
+                rtk->opt.codesmooth : 
                 rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j];
         if (ncsc <= 1) continue;
         
