@@ -940,7 +940,7 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
     double var[MAXOBS*2],dtrp=0.0,dion=0.0,vart=0.0,vari=0.0,dcb,freq;
     double dantr[NFREQ]={0},dants[NFREQ]={0};
     double ve[MAXOBS*2*NFREQ]={0},vmax=0;
-    char str[32];
+    char str[32],id[32];
     int ne=0,obsi[MAXOBS*2*NFREQ]={0},frqi[MAXOBS*2*NFREQ],maxobs,maxfrq,rej;
     int i,j,k,sat,sys,nv=0,nx=rtk->nx,stat=1,frq,code;
     int code_only = strstr(opt->pppopt,"-CODE_ONLY")!=NULL;
@@ -954,12 +954,13 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
     
     for (i=0;i<n&&i<MAXOBS;i++) {
         sat=obs[i].sat;
+        satno2id(sat,id);
         
         if ((r=geodist(rs+i*6,rr,e))<=0.0||
             satazel(pos,e,azel+i*2)<opt->elmin) {
             if (azel[1+i*2] != 0.0) {
-                trace(2, "satellite elevation angle out of limits: %s sat=%2d el=%.3f\n",
-                    str,sat,azel[1+i*2]*R2D);
+                trace(2, "satellite elevation angle out of limits: %s sat=%2d id=%s el=%.3f\n",
+                    str,sat,id,azel[1+i*2]*R2D);
             }
             exc[i]=1;
             continue;
@@ -996,8 +997,8 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
             
             if (opt->ionoopt==IONOOPT_IFLC) {
                 if ((y=code==0?Lc:Pc)==0.0) {
-                    trace(2,"iono-free LC not available: %s sat=%2d code=%d\n",
-                          str,sat,code);
+                    trace(2,"iono-free LC not available: %s sat=%2d id=%s code=%d\n",
+                          str,sat,id,code);
                     continue;
                 }
             }

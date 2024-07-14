@@ -624,23 +624,26 @@ static int satpos_ssr(gtime_t time, gtime_t teph, int sat, const nav_t *nav,
     eph_t *eph;
     double t1,t2,t3,er[3],ea[3],ec[3],rc[3],deph[3],dclk,dant[3]={0},tk;
     int i,sys;
+    char id[32];
+
+    satno2id(sat,id);
     
-    trace(4,"satpos_ssr: time=%s sat=%2d\n",time_str(time,3),sat);
+    trace(4,"satpos_ssr: time=%s sat=%2d id=%s\n",time_str(time,3),sat,id);
     
     ssr=nav->ssr+sat-1;
     
     if (!ssr->t0[0].time) {
-        trace(2,"no ssr orbit correction: %s sat=%2d\n",time_str(time,0),sat);
+        trace(2,"no ssr orbit correction: %s sat=%2d id=%s\n",time_str(time,0),sat,id);
         return 0;
     }
     if (!ssr->t0[1].time) {
-        trace(2,"no ssr clock correction: %s sat=%2d\n",time_str(time,0),sat);
+        trace(2,"no ssr clock correction: %s sat=%2d id=%s\n",time_str(time,0),sat,id);
         return 0;
     }
     /* inconsistency between orbit and clock correction */
     if (ssr->iod[0]!=ssr->iod[1]) {
-        trace(2,"inconsist ssr correction: %s sat=%2d iod=%d %d\n",
-              time_str(time,0),sat,ssr->iod[0],ssr->iod[1]);
+        trace(2,"inconsist ssr correction: %s sat=%2d id=%s iod=%d %d\n",
+              time_str(time,0),sat,id,ssr->iod[0],ssr->iod[1]);
         *svh=-1;
         return 0;
     }
@@ -654,13 +657,12 @@ static int satpos_ssr(gtime_t time, gtime_t teph, int sat, const nav_t *nav,
     trace(2,"age of ssr: %s sat=%2d t=%.0f %.0f\n",time_str(time,0),
               sat,t1,t2);
     if (sys==SYS_GPS && (fabs(t1)>MAXAGESSR_GPS || fabs(t2)>MAXAGESSR_GPS)) {
-        trace(2,"age of ssr error: %s sat=%2d t=%.0f\n",time_str(time,0),sat,t1);
+        trace(2,"age of ssr error: %s sat=%2d id=%s t=%.0f %.0f\n",time_str(time,0),sat,id,t1,t2);
         *svh=-1;
         return 0;
     }
     else if (sys!=SYS_GPS && (fabs(t1)>MAXAGESSR||fabs(t2)>MAXAGESSR)) {
-        trace(2,"age of ssr error: %s sat=%2d t=%.0f %.0f\n",time_str(time,0),
-              sat,t1,t2);
+        trace(2,"age of ssr error: %s sat=%2d id=%s t=%.0f %.0f\n",time_str(time,0),sat,id,t1,t2);
         *svh=-1;
         return 0;
     }
@@ -717,8 +719,8 @@ static int satpos_ssr(gtime_t time, gtime_t teph, int sat, const nav_t *nav,
     /* variance by ssr ura */
     *var=var_urassr(ssr->ura);
     
-    trace(5,"satpos_ssr: %s sat=%2d deph=%6.3f %6.3f %6.3f er=%6.3f %6.3f %6.3f dclk=%6.3f var=%6.3f\n",
-          time_str(time,2),sat,deph[0],deph[1],deph[2],er[0],er[1],er[2],dclk,*var);
+    trace(3,"satpos_ssr: %s sat=%2d deph=%6.3f %6.3f %6.3f er=%6.3f %6.3f %6.3f ea=%6.3f %6.3f %6.3f ec=%6.3f %6.3f %6.3f dclk=%6.3f var=%6.3f\n",
+          time_str(time,2),sat,deph[0],deph[1],deph[2],er[0],er[1],er[2],ea[0],ea[1],ea[2],ec[0],ec[1],ec[2],dclk,*var);
     
     return 1;
 }
@@ -787,6 +789,7 @@ extern void satposs(gtime_t teph, const obsd_t *obs, int n, const nav_t *nav,
     gtime_t time[2*MAXOBS]={{0}};
     double dt,pr;
     int i,j;
+    char id[32];
     
     trace(3,"satposs : teph=%s n=%d ephopt=%d\n",time_str(teph,3),n,ephopt);
     
@@ -794,12 +797,14 @@ extern void satposs(gtime_t teph, const obsd_t *obs, int n, const nav_t *nav,
         for (j=0;j<6;j++) rs [j+i*6]=0.0;
         for (j=0;j<2;j++) dts[j+i*2]=0.0;
         var[i]=0.0; svh[i]=0;
+
+        satno2id(obs[i].sat,id);
         
         /* search any pseudorange */
         for (j=0,pr=0.0;j<NFREQ;j++) if ((pr=obs[i].P[j])!=0.0) break;
         
         if (j>=NFREQ) {
-            trace(2,"no pseudorange %s sat=%2d\n",time_str(obs[i].time,3),obs[i].sat);
+            trace(2,"no pseudorange %s sat=%2d id=%s\n",time_str(obs[i].time,3),obs[i].sat,id);
             continue;
         }
         /* transmission time by satellite clock */
@@ -807,7 +812,7 @@ extern void satposs(gtime_t teph, const obsd_t *obs, int n, const nav_t *nav,
         
         /* satellite clock bias by broadcast ephemeris */
         if (!ephclk(time[i],teph,obs[i].sat,nav,&dt)) {
-            trace(3,"no broadcast clock %s sat=%2d\n",time_str(time[i],3),obs[i].sat);
+            trace(3,"no broadcast clock %s sat=%2d id=%s\n",time_str(time[i],3),obs[i].sat,id);
             continue;
         }
         time[i]=timeadd(time[i],-dt);
@@ -815,7 +820,7 @@ extern void satposs(gtime_t teph, const obsd_t *obs, int n, const nav_t *nav,
         /* satellite position and clock at transmission time */
         if (!satpos(time[i],teph,obs[i].sat,ephopt,nav,rs+i*6,dts+i*2,var+i,
                     svh+i)) {
-            trace(3,"no ephemeris %s sat=%2d\n",time_str(time[i],3),obs[i].sat);
+            trace(3,"no ephemeris %s sat=%2d id=%s\n",time_str(time[i],3),obs[i].sat,id);
             continue;
         }
         /* if no precise clock available, use broadcast clock instead */
