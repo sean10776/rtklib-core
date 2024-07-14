@@ -1425,6 +1425,10 @@ static int decode_type1042(rtcm_t *rtcm)
             eph.iode==rtcm->nav.eph[sat-1].iode&&
             eph.iodc==rtcm->nav.eph[sat-1].iodc) return 0; /* unchanged */
     }
+    if(eph.toes > 7*86400)
+        eph.toes -= 7*86400.0;
+    eph.iode =((int)toc/720)%240;
+
     rtcm->nav.eph[sat-1]=eph;
     rtcm->ephset=0;
     rtcm->ephsat=sat;
@@ -1537,6 +1541,8 @@ static int decode_ssr1(rtcm_t *rtcm, int sys, int subtype)
 {
     double udint,deph[3],ddeph[3];
     int i,j,k,type,sync,iod,nsat,prn,sat,iode,iodcrc=0,refd=0,np,ni,nj,offp;
+    double tow;
+    int week;
     
     type=getbitu(rtcm->buff,24,12);
     
@@ -1544,12 +1550,13 @@ static int decode_ssr1(rtcm_t *rtcm, int sys, int subtype)
         trace(2,"rtcm3 %d length error: len=%d\n",type,rtcm->len);
         return -1;
     }
+    tow = time2gpst(rtcm->time,&week);
     switch (sys) {
         case SYS_GPS: np=6; ni= 8; nj= 0; offp=  0; break;
         case SYS_GLO: np=5; ni= 8; nj= 0; offp=  0; break;
         case SYS_GAL: np=6; ni=10; nj= 0; offp=  0; break;
         case SYS_QZS: np=4; ni= 8; nj= 0; offp=192; break;
-        case SYS_CMP: np=6; ni=10; nj=24; offp=  1; break;
+        case SYS_CMP: np=6; ni=10; nj= 8; offp=  1; break;
         case SYS_SBS: np=6; ni= 9; nj=24; offp=120; break;
         default: return sync?0:10;
     }
@@ -1562,6 +1569,7 @@ static int decode_ssr1(rtcm_t *rtcm, int sys, int subtype)
         prn     =getbitu(rtcm->buff,i,np)+offp; i+=np;
         iode    =getbitu(rtcm->buff,i,ni);      i+=ni;
         iodcrc  =getbitu(rtcm->buff,i,nj);      i+=nj;
+        if (sys==SYS_CMP) iode = iodcrc;
         deph [0]=getbits(rtcm->buff,i,22)*1E-4; i+=22;
         deph [1]=getbits(rtcm->buff,i,20)*4E-4; i+=20;
         deph [2]=getbits(rtcm->buff,i,20)*4E-4; i+=20;
@@ -1605,7 +1613,7 @@ static int decode_ssr2(rtcm_t *rtcm, int sys, int subtype)
         case SYS_GLO: np=5; offp=  0; break;
         case SYS_GAL: np=6; offp=  0; break;
         case SYS_QZS: np=4; offp=192; break;
-        case SYS_CMP: np=6; offp=  1; break;
+        case SYS_CMP: np=6; offp=  0; break;
         case SYS_SBS: np=6; offp=120; break;
         default: return sync?0:10;
     }
@@ -1653,7 +1661,7 @@ static int decode_ssr3(rtcm_t *rtcm, int sys, int subtype)
         case SYS_GLO: np=5; offp=  0; sigs=ssr_sig_glo; break;
         case SYS_GAL: np=6; offp=  0; sigs=ssr_sig_gal; break;
         case SYS_QZS: np=4; offp=192; sigs=ssr_sig_qzs; break;
-        case SYS_CMP: np=6; offp=  1; sigs=ssr_sig_cmp; break;
+        case SYS_CMP: np=6; offp=  0; sigs=ssr_sig_cmp; break;
         case SYS_SBS: np=6; offp=120; sigs=ssr_sig_sbs; break;
         default: return sync?0:10;
     }
@@ -1697,6 +1705,8 @@ static int decode_ssr4(rtcm_t *rtcm, int sys, int subtype)
 {
     double udint,deph[3],ddeph[3],dclk[3];
     int i,j,k,type,nsat,sync,iod,prn,sat,iode,iodcrc=0,refd=0,np,ni,nj,offp;
+    double tow;
+    int week;
     
     type=getbitu(rtcm->buff,24,12);
     
@@ -1704,12 +1714,13 @@ static int decode_ssr4(rtcm_t *rtcm, int sys, int subtype)
         trace(2,"rtcm3 %d length error: len=%d\n",type,rtcm->len);
         return -1;
     }
+    tow = time2gpst(rtcm->time,&week);
     switch (sys) {
         case SYS_GPS: np=6; ni= 8; nj= 0; offp=  0; break;
         case SYS_GLO: np=5; ni= 8; nj= 0; offp=  0; break;
         case SYS_GAL: np=6; ni=10; nj= 0; offp=  0; break;
         case SYS_QZS: np=4; ni= 8; nj= 0; offp=192; break;
-        case SYS_CMP: np=6; ni=10; nj=24; offp=  1; break;
+        case SYS_CMP: np=6; ni=10; nj=0; offp=  0; break;
         case SYS_SBS: np=6; ni= 9; nj=24; offp=120; break;
         default: return sync?0:10;
     }
@@ -1721,6 +1732,7 @@ static int decode_ssr4(rtcm_t *rtcm, int sys, int subtype)
     for (j=0;j<nsat&&i+191+np+ni+nj<=rtcm->len*8;j++) {
         prn     =getbitu(rtcm->buff,i,np)+offp; i+=np;
         iode    =getbitu(rtcm->buff,i,ni);      i+=ni;
+        if (sys==SYS_CMP) iode &= 0xFF;
         iodcrc  =getbitu(rtcm->buff,i,nj);      i+=nj;
         deph [0]=getbits(rtcm->buff,i,22)*1E-4; i+=22;
         deph [1]=getbits(rtcm->buff,i,20)*4E-4; i+=20;
@@ -1770,7 +1782,7 @@ static int decode_ssr5(rtcm_t *rtcm, int sys, int subtype)
         case SYS_GLO: np=5; offp=  0; break;
         case SYS_GAL: np=6; offp=  0; break;
         case SYS_QZS: np=4; offp=192; break;
-        case SYS_CMP: np=6; offp=  1; break;
+        case SYS_CMP: np=6; offp=  0; break;
         case SYS_SBS: np=6; offp=120; break;
         default: return sync?0:10;
     }
@@ -1812,7 +1824,7 @@ static int decode_ssr6(rtcm_t *rtcm, int sys, int subtype)
         case SYS_GLO: np=5; offp=  0; break;
         case SYS_GAL: np=6; offp=  0; break;
         case SYS_QZS: np=4; offp=192; break;
-        case SYS_CMP: np=6; offp=  1; break;
+        case SYS_CMP: np=6; offp=  0; break;
         case SYS_SBS: np=6; offp=120; break;
         default: return sync?0:10;
     }
@@ -1896,7 +1908,7 @@ static int decode_ssr7(rtcm_t *rtcm, int sys, int subtype)
         case SYS_GLO: np=5; offp=  0; sigs=ssr_sig_glo; break;
         case SYS_GAL: np=6; offp=  0; sigs=ssr_sig_gal; break;
         case SYS_QZS: np=4; offp=192; sigs=ssr_sig_qzs; break;
-        case SYS_CMP: np=6; offp=  1; sigs=ssr_sig_cmp; break;
+        case SYS_CMP: np=6; offp=  0; sigs=ssr_sig_cmp; break;
         default: return sync?0:10;
     }
     if (subtype>0) { /* IGS SSR */
