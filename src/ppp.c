@@ -1186,25 +1186,36 @@ static int test_hold_amb(rtk_t *rtk)
 /* carrier smoothed code (CSC) -----------------------------------------------*/
 static void csc(rtk_t *rtk, obsd_t *obs, int n, nav_t *nav)
 {
+    char str[32], id[32];
+
+    time2str(obs[0].time,str,2);
+    trace(3,"csc: time=%s n=%d\n",str,n);
+
     /* P_hat = P/ncsc + (P_prev + (L - L_prev))*((ncsc-1)/ncsc) */
     int i,j,ncsc;
-    double dL;  // doppler
+    double dL,wavelength;  // doppler
     for (i=0;i<n;i++) for (j=0;j<rtk->opt.nf;j++) {
         if (obs[i].L[j]==0.0 || obs[i].P[j]==0.0) continue;
 
+        satno2id(obs[i].sat,id);
+
         /* if cycle slip detected, reset ncsc to -1 prevent using cycle slip data */
         if (rtk->ssat[obs[i].sat-1].slip[j]) {
+            trace(3,"csc: slip detected sat=%2d id=%s\n",obs[i].sat,id);
             rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j]=-1;
         }
 
         ncsc = ++rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j] >= rtk->opt.codesmooth ?
                 rtk->opt.codesmooth : 
                 rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j];
+        dL=obs[i].L[j]-rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j];
+        wavelength=CLIGHT/sat2freq(obs[i].sat,obs[i].code[j],nav);
+        trace(3,"csc: time=%s sat=%2d id=%s freq=%d ncsc=%d ph=%13.3f pc=%13.3f P=%13.3f L=%13.3f dL=%13.3f\n",
+              str,obs[i].sat,id,j+1,ncsc,rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j]*wavelength,
+              rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j],obs[i].P[j],obs[i].L[j]*wavelength,dL*wavelength);
         if (ncsc <= 1) continue;
         
-        dL=obs[i].L[j]-rtk->ssat[obs[i].sat-1].ph[obs[i].rcv-1][j];
-        dL=dL*CLIGHT/sat2freq(obs[i].sat,obs[i].code[j],nav);
-        obs[i].P[j]=obs[i].P[j]/ncsc+(rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]+dL)*(ncsc-1)/ncsc;
+        obs[i].P[j]=obs[i].P[j]/ncsc+(rtk->ssat[obs[i].sat-1].pc[obs[i].rcv-1][j]+dL*wavelength)*(ncsc-1)/ncsc;
     }
 }
 /* precise point positioning -------------------------------------------------*/
