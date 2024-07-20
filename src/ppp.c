@@ -363,7 +363,7 @@ static double varerr(int sat, int sys, double el, double snr_rover,
         else var+=SQR(opt->err[7]*obs->Lstd[frq]*0.004*0.2); /* 0.004 cycles -> m) */
     }
 
-    var*=(opt->ionoopt==IONOOPT_IFLC)?SQR(3.0):1.0;
+    var*=(opt->ionoopt==IONOOPT_IFLC)?SQR(1.27):1.0;
     return var;
 }
 /* initialize state and covariance -------------------------------------------*/
