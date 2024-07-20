@@ -944,6 +944,10 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
     int ne=0,obsi[MAXOBS*2*NFREQ]={0},frqi[MAXOBS*2*NFREQ],maxobs,maxfrq,rej;
     int i,j,k,sat,sys,nv=0,nx=rtk->nx,stat=1,frq,code;
     int code_only = strstr(opt->pppopt,"-CODE_ONLY")!=NULL;
+
+    int csc_n1,csc_n2;
+    double csc_n,csc_factor;
+    int csc = strstr(opt->pppopt,"-CSC")!=NULL;
     
     time2str(obs[0].time,str,2);
     
@@ -1055,6 +1059,20 @@ static int ppp_res(int post, const obsd_t *obs, int n, const double *rs,
             var[nv]=varerr(sat,sys,azel[1+i*2],
                     SNR_UNIT*rtk->ssat[sat-1].snr_rover[frq],
                     j,opt,obs+i);
+            if (csc) {
+                // rtk->ssat[obs[i].sat-1].ncsc[obs[i].rcv-1][j]
+                csc_n1 = rtk->ssat[sat-1].ncsc[obs[i].rcv-1][0];
+                csc_n2 = rtk->ssat[sat-1].ncsc[obs[i].rcv-1][obs[i].L[1]==0?2:1];
+
+                csc_n1 = csc_n1>opt->codesmooth?opt->codesmooth:csc_n1;
+                csc_n2 = csc_n2>opt->codesmooth?opt->codesmooth:csc_n2;
+
+                csc_factor = SQRT(SQR(1-SQRT((double)csc_n1/opt->codesmooth))+SQR(1-SQRT((double)csc_n2/opt->codesmooth)));
+                csc_factor = csc_factor<(1/SQRT(opt->codesmooth))?(1/SQRT(opt->codesmooth)):csc_factor;
+                csc_factor = csc_factor>1.0?1.0:csc_factor;
+
+                var[nv] *= csc_factor;
+            }
             var[nv] +=vart+SQR(C)*vari+var_rs[i];
             if (sys==SYS_GLO&&code==1) var[nv]+=VAR_GLO_IFB;
             
